@@ -288,6 +288,11 @@ int xocl_xgq_attach(struct xocl_xgq *xgq_handle, void *client, struct semaphore 
 
 	spin_lock_irqsave(&xgq->xx_lock, flags);
 
+	if (!xgq) {
+		pr_info("%s:%d", __func__, __LINE__);
+		return -EINVAL;
+	}
+
 	if (xgq->xx_num_client >= MAX_CLIENTS) {
 		spin_unlock_irqrestore(&xgq->xx_lock, flags);
 		return -ENOMEM;

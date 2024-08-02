@@ -2591,9 +2591,11 @@ static int __icap_download_bitstream_user(struct platform_device *pdev,
 		goto done;
 
 	xocl_subdev_destroy_by_slot(xdev, slot_id);
-
+/* workaround 1: skip peer download */
+#if 1
 	err = __icap_peer_xclbin_download(icap, xclbin, slot_id);
-
+#endif
+err = 0;
 	if (err)
 		goto done;
 
@@ -2789,7 +2791,10 @@ static int icap_download_bitstream_axlf(struct platform_device *pdev,
 	 */
 	islot = icap->slot_info[slot_id];
 	if (header && (bitstream || bitstream_part_pdi)) {
-		ICAP_INFO(icap, "check interface uuid");
+		ICAP_INFO(icap, "check interface uuid SKIPPING");
+
+		ICAP_WARN(icap, "skip fdt check");
+#if 0
 		err = xocl_fdt_check_uuids(xdev,
 				(const void *)XDEV(xdev)->fdt_blob,
 				(const void *)((char *)xclbin +
@@ -2799,7 +2804,7 @@ static int icap_download_bitstream_axlf(struct platform_device *pdev,
 			err = -EINVAL;
 			goto done;
 		}
-
+#endif
 		/* Set this slot is as a PL Slot */
 		islot->pl_slot = true;
 	}
@@ -2822,12 +2827,14 @@ static int icap_download_bitstream_axlf(struct platform_device *pdev,
 		err = -EINVAL;
 		goto done;
 	}
+	/* FIXME: Skip below check for versal-mgmt, for now
 	if (!xocl_verify_timestamp(xdev,
 		xclbin->m_header.m_featureRomTimeStamp)) {
 		ICAP_ERR(icap, "TimeStamp of ROM did not match Xclbin");
 		err = -EOPNOTSUPP;
 		goto done;
 	}
+	*/
 	if (icap_bitstream_in_use(icap, slot_id)) {
 		ICAP_ERR(icap, "bitstream is in-use, can't change");
 		err = -EBUSY;
@@ -3169,10 +3176,11 @@ static uint64_t icap_get_data_nolock(struct platform_device *pdev,
 	uint64_t target = 0;
 
 	if (!ICAP_PRIVILEGED(icap)) {
-
+/* workaround 3: periodic cached icap data will fail */
+#if 0
 		if (ktime_compare(now, icap->cache_expires) > 0)
 			icap_read_from_peer(pdev);
-
+#endif
 		switch (kind) {
 		case CLOCK_FREQ_0:
 			target = icap->cache.freq_0;
