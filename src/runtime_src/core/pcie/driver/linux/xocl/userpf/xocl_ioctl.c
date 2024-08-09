@@ -126,7 +126,7 @@ int xocl_create_hw_ctx_ioctl(struct drm_device *dev, void *data,
         /* Download the XCLBIN to the device first */
         mutex_lock(&xdev->dev_lock);
 	if (!(xdev->core.is_mbx_version_valid &&
-	    (xdev->core.mbx_protocol_version == 1))) {
+	    (xdev->core.mgmt_mbx_protocol_version == 1))) {
 		ret = xocl_read_axlf_helper(drm_p, &axlf_obj_ptr,
 					    drm_hw_ctx->qos, &slot_id);
 		mutex_unlock(&xdev->dev_lock);
@@ -217,8 +217,14 @@ int xocl_user_intr_ioctl(struct drm_device *dev, void *data,
 	if (args->fd < 0)
 		return -EINVAL;
 
-	xocl_dma_intr_register(xdev, args->msix, NULL, NULL, args->fd);
-	xocl_dma_intr_config(xdev, args->msix, true);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		xocl_vmgmt_dma_intr_register(xdev, args->msix, NULL, NULL, args->fd);
+		ret = xocl_vmgmt_dma_intr_config(xdev, args->msix, true);
+	}
+	else {
+		xocl_dma_intr_register(xdev, args->msix, NULL, NULL, args->fd);
+		ret = xocl_dma_intr_config(xdev, args->msix, true);
+	}
 
 	return ret;
 }
@@ -1007,6 +1013,7 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr,
 
 	XDEV(xdev)->axlf_obj[slot_id] = axlf_obj;
 	err = xocl_icap_download_axlf(xdev, axlf, slot_id);
+
 	/*
 	 * Don't just bail out here, always recreate drm mem
 	 * since we have cleaned it up before download.
@@ -1071,7 +1078,7 @@ int xocl_read_axlf_ioctl(struct drm_device *dev,
 userpf_info(xdev, "%d", __LINE__);
 
 	if (!(xdev->core.is_mbx_version_valid &&
-	    (xdev->core.mbx_protocol_version == 1))) {
+	    (xdev->core.mgmt_mbx_protocol_version == 1))) {
 		err = xocl_read_axlf_helper(drm_p, axlf_obj_ptr, 0, &slot_id); // QOS legacy
 	} else {
 		err = xocl_vmgmt_read_axlf_helper(drm_p, axlf_obj_ptr, 0,

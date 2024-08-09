@@ -2290,11 +2290,8 @@ static int xocl_kds_update_xgq(struct xocl_dev *xdev, int slot_hdl,
 		userpf_err(xdev, "Only support ERT XGQ command 1.0 & 2.0\n");
 		ret = -ENOTSUPP;
 
-if (xdev->core.ert_ctrl_platdev &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev) &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops) {
-			ert_ops = XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops;
-			ert_ops->dump_xgq(xdev->core.ert_ctrl_platdev);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		    xocl_vmgmt_ert_ctrl_dump(xdev);
 		} else {
 			xocl_ert_ctrl_dump(xdev);	/* TODO: remove this line before 2022.2 release */
 		}
@@ -2342,12 +2339,8 @@ if (xdev->core.ert_ctrl_platdev &&
 		if (ret)
 			goto create_regular_cu;
 
-if (xdev->core.ert_ctrl_platdev &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev) &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops) {
-			ert_ops = XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops;
-			xgq = ert_ops->setup_xgq(xdev->core.ert_ctrl_platdev,
-						 resp.xgq_id, resp.offset);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			xgq = xocl_vmgmt_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
 		} else {
 			xgq = xocl_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
 		}
@@ -2371,15 +2364,12 @@ if (xdev->core.ert_ctrl_platdev &&
 		if (ret)
 			goto create_regular_cu;
 
-	if (xdev->core.ert_ctrl_platdev &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev) &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops) {
-			ert_ops = XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops;
-			xgq = ert_ops->setup_xgq(xdev->core.ert_ctrl_platdev,
-						 resp.xgq_id, resp.offset);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			xgq = xocl_vmgmt_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
 		} else {
 			xgq = xocl_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
 		}
+
 		if (IS_ERR(xgq)) {
 			userpf_err(xdev, "Setup XGQ failed\n");
 			ret = PTR_ERR(xgq);
@@ -2457,19 +2447,8 @@ int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
 	struct xocl_ert_ctrl_funcs *ert_ops;
 	XDEV(xdev)->kds.xgq_enable = false;
 	
-	if (xdev->core.ert_ctrl_platdev &&
-	    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev) &&
-	    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops) {
-		ert_ops = XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops;
-		ret = ert_ops->connect(xdev->core.ert_ctrl_platdev);
-		if (ret == -ENODEV) {
-			userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
-			XDEV(xdev)->kds.ert_disable = true;
-		} else if (ret < 0) {
-			userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
-			ret = -EINVAL;
-			goto out;
-		}
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+	    ret = xocl_vmgmt_ert_ctrl_connect(xdev);
 	} else {
 		ret = xocl_ert_ctrl_connect(xdev);
 		if (ret == -ENODEV) {
@@ -2497,7 +2476,14 @@ int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
 			goto out;
 		}
 	} else {
-		if (!xocl_ert_ctrl_is_version(xdev, 1, 0)) {
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			ret = xocl_vmgmt_ert_ctrl_is_version(xdev, 1, 0);
+		}
+		else {
+			ret = xocl_ert_ctrl_is_version(xdev, 1, 0);
+		}
+
+		if (!ret) {
 			if (slot_hdl) {
 				userpf_err(xdev, "legacy ERT only support one xclbin\n");
 				ret = -EINVAL;
@@ -2545,7 +2531,11 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 			return ret;
 
 	} else {
-		ret = xocl_ert_ctrl_connect(xdev);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			ret = xocl_vmgmt_ert_ctrl_connect(xdev);
+		} else {
+			ret = xocl_ert_ctrl_connect(xdev);
+		}
 		if (ret) {
 			userpf_info_once(xdev, "ERT will be disabled, ret %d\n", ret);
 			XDEV(xdev)->kds.ert_disable = true;
@@ -2555,7 +2545,13 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 		if (XDEV(xdev)->kds.ert_disable == true)
 			return ret;
 
-		if (!xocl_ert_ctrl_is_version(xdev, 1, 0))
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			ret = xocl_vmgmt_ert_ctrl_is_version(xdev, 1, 0);
+		}
+		else {
+			ret = xocl_ert_ctrl_is_version(xdev, 1, 0);
+		}
+		if (!ret)
 			return ret;
 	}
 	/*
@@ -2610,46 +2606,40 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 				goto out;
 		}
 
-		if (xdev->core.ert_ctrl_platdev &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev) &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops) {
-			ert_ops->unset_xgq(xdev->core.ert_ctrl_platdev,
-					   xcu->info.xgq);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			xocl_vmgmt_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
 		} else {
 			xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
 		}
-	}
 
-	cu_mgmt = &XDEV(xdev)->kds.cu_mgmt;
-	for (i = 0; i < MAX_CUS; i++) {
-		xcu = cu_mgmt->xcus[i];
-		if (!xcu)
-			continue;
+		cu_mgmt = &XDEV(xdev)->kds.cu_mgmt;
+		for (i = 0; i < MAX_CUS; i++) {
+			xcu = cu_mgmt->xcus[i];
+			if (!xcu)
+				continue;
 
-		/* Unregister the CUs as per slot order */
-		if (xcu->info.slot_idx != slot_hdl)
-			continue;
+			/* Unregister the CUs as per slot order */
+			if (xcu->info.slot_idx != slot_hdl)
+				continue;
 
-		/* ERT XGQ version 2.0 onward supports unconfigure CUs/SCUs */
-		if (major == 2 && minor == 0) {
-			ret = xocl_kds_xgq_uncfg_cu(xdev, xcu->info.inst_idx, DOMAIN_PL, false);
-			if (ret)
-				goto out;
+			/* ERT XGQ version 2.0 onward supports unconfigure CUs/SCUs */
+			if (major == 2 && minor == 0) {
+				ret = xocl_kds_xgq_uncfg_cu(xdev, xcu->info.inst_idx, DOMAIN_PL, false);
+				if (ret)
+					goto out;
+			}
+
+			if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+				xocl_vmgmt_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+			} else {
+				xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+			}
 		}
 
-		if (xdev->core.ert_ctrl_platdev &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev) &&
-		    XOCL_GET_DRV_PRI(xdev->core.ert_ctrl_platdev)->ops) {
-			ert_ops->unset_xgq(xdev->core.ert_ctrl_platdev,
-					   xcu->info.xgq);
-		} else {
-			xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
-		}
+		ret = xocl_kds_xgq_cfg_end(xdev);
+		if (ret)
+			goto out;
 	}
-
-	ret = xocl_kds_xgq_cfg_end(xdev);
-	if (ret)
-		goto out;
 
 out:
 	if (ret)

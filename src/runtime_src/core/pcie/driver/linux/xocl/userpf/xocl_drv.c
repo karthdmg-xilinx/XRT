@@ -134,7 +134,7 @@ static void xocl_mig_cache_read_from_peer(struct xocl_dev *xdev)
 
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
-	ret = xocl_peer_request(xdev,
+	xocl_peer_request(xdev,
 		mb_req, reqlen, mig_ecc, &resp_len, NULL, NULL, 0, 0);
 
 	if (!ret)
@@ -177,7 +177,11 @@ static int userpf_intr_config(xdev_handle_t xdev_hdl, u32 intr, bool en)
 {
 	int ret;
 
-	ret = xocl_dma_intr_config(xdev_hdl, intr, en);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+		ret = xocl_vmgmt_dma_intr_config(xdev_hdl, intr, en);
+	} else {
+		ret = xocl_dma_intr_config(xdev_hdl, intr, en);
+	}
 	if (ret != -ENODEV)
 		return ret;
 
@@ -189,9 +193,16 @@ static int userpf_intr_register(xdev_handle_t xdev_hdl, u32 intr,
 {
 	int ret;
 
-	ret = handler ?
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+		ret = handler ?
+		xocl_vmgmt_dma_intr_register(xdev_hdl, intr, handler, arg, -1) :
+		xocl_vmgmt_dma_intr_unreg(xdev_hdl, intr);
+	}
+	else {
+		ret = handler ?
 		xocl_dma_intr_register(xdev_hdl, intr, handler, arg, -1) :
 		xocl_dma_intr_unreg(xdev_hdl, intr);
+	}
 	if (ret != -ENODEV)
 		return ret;
 
@@ -407,6 +418,7 @@ int xocl_hot_reset(struct xocl_dev *xdev, u32 flag)
 
 		mbret = xocl_peer_request(xdev, &mbreq, sizeof(struct xcl_mailbox_req),
 			&ret, &resplen, NULL, NULL, 0, 6);
+		}
 		/*
 		 * Check the return values mbret & ret (mpd (peer) side response) and confirm
 		 * reset request success.
@@ -428,7 +440,7 @@ int xocl_hot_reset(struct xocl_dev *xdev, u32 flag)
 		return 0;
 	}
 
-	mbret = xocl_peer_request(xdev, &mbreq, sizeof(struct xcl_mailbox_req),
+	xocl_peer_request(xdev, &mbreq, sizeof(struct xcl_mailbox_req),
 		&ret, &resplen, NULL, NULL, 0, 0);
 
 	xocl_reset_notify(xdev->core.pdev, true);
@@ -889,7 +901,7 @@ int xocl_refresh_subdevs(struct xocl_dev *xdev)
 
 		subdev_peer.offset = offset;
 		ret = xocl_peer_request(xdev, mb_req, reqlen,
-			resp, &resp_len, NULL, NULL, 0, 0);
+				resp, &resp_len, NULL, NULL, 0, 0);
 		if (ret)
 			goto failed;
 
@@ -1450,7 +1462,8 @@ void xocl_poll_mgmt_status(struct work_struct *w)
 
 	/* Get mailbox protocol version */
 	req.req = XCL_MAILBOX_REQ_PROTOCOL_VERSION;
-	ret = xocl_peer_request(xdev, &req, sizeof(req), &info, &len, NULL,
+
+	xocl_peer_request(xdev, &req, sizeof(req), &info, &len, NULL,
 				NULL, 0, 0);
 	if (ret) {
 		/* Respin timer */
@@ -1459,7 +1472,7 @@ void xocl_poll_mgmt_status(struct work_struct *w)
 	}
 
 	userpf_info(xdev, "Mailbox protocol version: %u", info.version);
-	xdev->mbx_protocol_version = info.version;
+	xdev->mgmt_mbx_protocol_version = info.version;
 	xdev->is_mbx_version_valid = true;
 
 	if (info.version == 1) {
@@ -1564,7 +1577,7 @@ static int xocl_hwmon_sdm_init_sysfs(struct xocl_dev *xdev, enum xcl_group_kind 
 
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
-	ret = xocl_peer_request(xdev, mb_req, reqlen, in_buf, &resp_len, NULL, NULL, 0, 0);
+	 ret = xocl_peer_request(xdev, mb_req, reqlen, in_buf, &resp_len, NULL, NULL, 0, 0);
 	if (ret) {
 		userpf_err(xdev, "sdr peer request failed, err: %d", ret);
 		goto done;

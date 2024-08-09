@@ -797,7 +797,7 @@ static int feature_rom_probe(struct platform_device *pdev)
 
 	data = dev_get_platdata(&pdev->dev);
 #ifdef DZ_DEBUG
-	if (XOCL_MGMT_MBX_PROTOCOL_VERSION(xdev)) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
 		memcpy(&rom->header, data, sizeof(*data));
 		goto skip_dtb;
 	}
