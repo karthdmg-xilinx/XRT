@@ -254,7 +254,6 @@ static int hwmon_sdm_read_from_peer(struct platform_device *pdev, int repo_type,
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
 	ret = xocl_peer_request(xdev, mb_req, reqlen, in_buf, &resp_len, NULL, NULL, 0, 0);
-
 done:
 	vfree(mb_req);
 

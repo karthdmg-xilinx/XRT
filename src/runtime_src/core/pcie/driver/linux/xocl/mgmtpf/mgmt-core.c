@@ -588,7 +588,12 @@ static int xclmgmt_intr_config(xdev_handle_t xdev_hdl, u32 intr, bool en)
 	struct xclmgmt_dev *lro = (struct xclmgmt_dev *)xdev_hdl;
 	int ret;
 
-	ret = xocl_dma_intr_config(lro, intr, en);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+		ret = xocl_vmgmt_dma_intr_config(lro, intr, en);
+	} else {
+		ret = xocl_dma_intr_config(lro, intr, en);
+	}
+
 	return ret;
 }
 
@@ -598,9 +603,16 @@ static int xclmgmt_intr_register(xdev_handle_t xdev_hdl, u32 intr,
 	struct xclmgmt_dev *lro = (struct xclmgmt_dev *)xdev_hdl;
 	int ret;
 
-	ret = handler ?
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+		ret = handler ?
+		xocl_vmgmt_dma_intr_register(lro, intr, handler, arg, -1) :
+		xocl_vmgmt_dma_intr_unreg(lro, intr);
+	}
+	else {
+		ret = handler ?
 		xocl_dma_intr_register(lro, intr, handler, arg, -1) :
 		xocl_dma_intr_unreg(lro, intr);
+	}
 	return ret;
 }
 
@@ -1245,6 +1257,16 @@ void xclmgmt_mailbox_srv(void *arg, void *data, size_t len,
 		vfree(resp);
 		break;
 	}
+#if 0
+	case XCL_MAILBOX_REQ_PROTOCOL_VERSION: {
+		struct xcl_mailbox_info resp;
+
+		resp.version = XCL_MB_PROTOCOL_VER;
+		(void) xocl_peer_response(lro, req->req, msgid, &resp,
+					  sizeof(resp));
+		break;
+	}
+#endif
 	default:
 		mgmt_err(lro, "unknown peer request opcode: %d\n", req->req);
 		break;
