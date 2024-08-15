@@ -26,7 +26,12 @@ static ssize_t xclbinuuid_show(struct device *dev,
 	int i = 0;
 
 	for (i = 0; i < MAX_SLOT_SUPPORT; i++) {
-		err = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			err = XOCL_VMGMT_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		}
+		else {
+			err = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		}
 		if (err)
 			return cnt;
 
@@ -35,7 +40,11 @@ static ssize_t xclbinuuid_show(struct device *dev,
 
 		cnt += sprintf(buf + cnt, "%pUb\n", xclbin_id ? xclbin_id : 0);
 
-		XOCL_PUT_XCLBIN_ID(xdev, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			XOCL_VMGMT_PUT_XCLBIN_ID(xdev, i);
+		} else {
+			XOCL_PUT_XCLBIN_ID(xdev, i);
+		}
 		xclbin_id = NULL;
 	}
 
@@ -102,7 +111,12 @@ static ssize_t kdsstat_show(struct device *dev,
 	u32 i = 0;
 
 	for (i = 0; i < MAX_SLOT_SUPPORT; i++) {
-		err = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			err = XOCL_VMGMT_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		}
+		else {
+			err = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		}
 		if (err) {
 			size += sprintf(buf + size, "unable to give xclbin id");
 			return size;
@@ -114,7 +128,11 @@ static ssize_t kdsstat_show(struct device *dev,
 		size += sprintf(buf + size, "xclbin:\t\t\t%pUb\n",
 				xclbin_id ? xclbin_id : 0);
 		
-		XOCL_PUT_XCLBIN_ID(xdev, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			XOCL_VMGMT_PUT_XCLBIN_ID(xdev, i);
+		} else {
+			XOCL_PUT_XCLBIN_ID(xdev, i);
+		}
 		xclbin_id = NULL;
 	}
 
@@ -151,7 +169,12 @@ static ssize_t xocl_mm_stat(struct xocl_dev *xdev, char *buf, bool raw)
 
 	mutex_lock(&xdev->dev_lock);
 
-	err = XOCL_GET_MEM_TOPOLOGY(xdev, topo, legacy_slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		err = XOCL_VMGMT_GET_MEM_TOPOLOGY(xdev, topo, legacy_slot_id);
+	}
+	else {
+		err = XOCL_GET_MEM_TOPOLOGY(xdev, topo, legacy_slot_id);
+	}
 	if (err) {
 		mutex_unlock(&xdev->dev_lock);
 		return err;
@@ -223,7 +246,12 @@ static ssize_t xocl_mm_stat(struct xocl_dev *xdev, char *buf, bool raw)
 	}
 
 done:
-	XOCL_PUT_MEM_TOPOLOGY(xdev, legacy_slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		XOCL_VMGMT_PUT_MEM_TOPOLOGY(xdev, legacy_slot_id);
+	}
+	else {
+		XOCL_PUT_MEM_TOPOLOGY(xdev, legacy_slot_id);
+	}
 	mutex_unlock(&xdev->dev_lock);
 	return size;
 }

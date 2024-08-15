@@ -2653,8 +2653,12 @@ static ssize_t read_temp_by_mem_topology(struct file *filp,
 
         if (!drm)
                 return 0;
-
-	ret  = XOCL_GET_MEM_TOPOLOGY(xdev, memtopo, slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret  = XOCL_VMGMT_GET_MEM_TOPOLOGY(xdev, memtopo, slot_id);
+	}
+	else {
+		ret  = XOCL_GET_MEM_TOPOLOGY(xdev, memtopo, slot_id);
+	}
 	if (ret)
                 return ret;
 
@@ -2680,7 +2684,12 @@ static ssize_t read_temp_by_mem_topology(struct file *filp,
 
 	memcpy(buffer, temp, nread);
 done:
-	XOCL_PUT_MEM_TOPOLOGY(xdev, slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		XOCL_VMGMT_PUT_MEM_TOPOLOGY(xdev, slot_id);
+	}
+	else {
+		XOCL_PUT_MEM_TOPOLOGY(xdev, slot_id);
+	}
 	vfree(temp);
 	return nread;
 }
