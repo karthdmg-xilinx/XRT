@@ -799,7 +799,8 @@ static int feature_rom_probe(struct platform_device *pdev)
 
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
 		memcpy(&rom->header, data, sizeof(*data));
-	} else {
+	}
+	else {
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 		if (res == NULL) {
 			dev_dbg(&pdev->dev, "Get header from VSEC");
@@ -821,7 +822,6 @@ static int feature_rom_probe(struct platform_device *pdev)
 				(void)get_header_from_iomem(rom);
 		}
 	}
-
 	if (strstr(rom->header.VBNVName, "-xare")) {
 		/*
 		 * ARE device, ARE is mapped like another DDR inside FPGA;

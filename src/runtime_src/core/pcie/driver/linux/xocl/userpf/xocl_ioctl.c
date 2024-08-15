@@ -102,7 +102,9 @@ int xocl_ctx_ioctl(struct drm_device *dev, void *data,
 	return ret;
 }
 
- /* a lock on xclbin if it has not been acquired before. Also return the hw_context
+/*
+ * Create a hw context on a Slot. First Load the given xclbin to a slot and take
+ * a lock on xclbin if it has not been acquired before. Also return the hw_context
  * once loaded succfully. Shared the same context for all context requests
  * for that process if loded into same slot.
  */
@@ -136,7 +138,6 @@ int xocl_create_hw_ctx_ioctl(struct drm_device *dev, void *data,
 		/* Slot id is 0 for now */
 		return xocl_vmgmt_create_hw_context(xdev, filp, drm_hw_ctx, &uuid, slot_id);
 	}
-
 	ret = xocl_read_axlf_helper(drm_p, &axlf_obj_ptr, drm_hw_ctx->qos, &slot_id);
 	mutex_unlock(&xdev->dev_lock);
 	if (ret)
@@ -712,7 +713,6 @@ int xocl_vmgmt_read_axlf_helper(struct xocl_drm *drm_p,
 	} else {
 		preserve_mem = xocl_preserve_mem(drm_p, new_topology, size);
 	}
-
 	/* Switching the xclbin, make sure none of the buffers are used. */
 	if (!preserve_mem) {
 		err = xocl_cleanup_mem(drm_p, *slot);
