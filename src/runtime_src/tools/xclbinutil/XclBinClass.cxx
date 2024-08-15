@@ -469,7 +469,7 @@ XclBin::findAndReadMirrorData(std::fstream& _istream, boost::property_tree::ptre
   if (XUtil::findBytesInStream(_istream, mirroDataStart, startOffset) == true) {
     XUtil::TRACE(boost::format("Found MIRROR_DATA_START at offset: 0x%lx") % startOffset);
     startOffset += (unsigned int)mirroDataStart.length();
-  }  else {
+  } else {
     std::string errMsg;
     errMsg  = "ERROR: Mirror backup data not found in given file.\n";
     errMsg += "       The given archive image does not contain any metadata to\n";
@@ -485,7 +485,7 @@ XclBin::findAndReadMirrorData(std::fstream& _istream, boost::property_tree::ptre
   unsigned int bufferSize = 0;
   if (XUtil::findBytesInStream(_istream, mirrorDataEnd, bufferSize) == true) {
     XUtil::TRACE(boost::format("Found MIRROR_DATA_END.  Buffersize: 0x%lx") % bufferSize);
-  }  else {
+  } else {
     std::string errMsg = "ERROR: Mirror backup data not well formed in given file.";
     throw std::runtime_error(errMsg);
   }

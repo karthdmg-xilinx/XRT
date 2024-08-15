@@ -2235,6 +2235,7 @@ static int xocl_kds_update_xgq(struct xocl_dev *xdev, int slot_hdl,
 	int num_scus = 0;
 	int ret = 0;
 	int i = 0;
+	struct xocl_ert_ctrl_funcs *ert_ops;
 
 	cu_info = kzalloc(MAX_CUS * sizeof(struct xrt_cu_info), GFP_KERNEL);
 	if (!cu_info)
@@ -2288,7 +2289,13 @@ static int xocl_kds_update_xgq(struct xocl_dev *xdev, int slot_hdl,
 	if ((major != 1 && major != 2) && minor != 0) {
 		userpf_err(xdev, "Only support ERT XGQ command 1.0 & 2.0\n");
 		ret = -ENOTSUPP;
-		xocl_ert_ctrl_dump(xdev);	/* TODO: remove this line before 2022.2 release */
+
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		    xocl_vmgmt_ert_ctrl_dump(xdev);
+		} else {
+			xocl_ert_ctrl_dump(xdev);	/* TODO: remove this line before 2022.2 release */
+		}
+
 		goto out;
 	}
 
@@ -2332,7 +2339,12 @@ static int xocl_kds_update_xgq(struct xocl_dev *xdev, int slot_hdl,
 		if (ret)
 			goto create_regular_cu;
 
-		xgq = xocl_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			xgq = xocl_vmgmt_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
+		} else {
+			xgq = xocl_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
+		}
+
 		if (IS_ERR(xgq)) {
 			userpf_err(xdev, "Setup XGQ failed\n");
 			ret = PTR_ERR(xgq);
@@ -2352,7 +2364,12 @@ static int xocl_kds_update_xgq(struct xocl_dev *xdev, int slot_hdl,
 		if (ret)
 			goto create_regular_cu;
 
-		xgq = xocl_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			xgq = xocl_vmgmt_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
+		} else {
+			xgq = xocl_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
+		}
+
 		if (IS_ERR(xgq)) {
 			userpf_err(xdev, "Setup XGQ failed\n");
 			ret = PTR_ERR(xgq);
@@ -2427,30 +2444,56 @@ int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
 			  struct ps_kernel_node *ps_kernel)
 {
 	int ret = 0;
-
+	struct xocl_ert_ctrl_funcs *ert_ops;
 	XDEV(xdev)->kds.xgq_enable = false;
-	ret = xocl_ert_ctrl_connect(xdev);
-	if (ret == -ENODEV) {
-		userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
-		XDEV(xdev)->kds.ert_disable = true;
-	} else if (ret < 0) {
-		userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
-		ret = -EINVAL;
-		goto out;
-	}
 
-	/* Try config legacy ERT firmware */
-	if (!xocl_ert_ctrl_is_version(xdev, 1, 0)) {
-		if (slot_hdl) {
-			userpf_err(xdev, "legacy ERT only support one xclbin\n");
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+	    ret = xocl_vmgmt_ert_ctrl_connect(xdev);
+	} else {
+		ret = xocl_ert_ctrl_connect(xdev);
+		if (ret == -ENODEV) {
+			userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
+			XDEV(xdev)->kds.ert_disable = true;
+		} else if (ret < 0) {
+			userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
 			ret = -EINVAL;
 			goto out;
 		}
-		ret = xocl_kds_update_legacy(xdev, XDEV(xdev)->axlf_obj[slot_hdl]->kds_cfg,
-			       ip_layout, ps_kernel);
-		goto out;
 	}
 
+/* Try config legacy ERT firmware */
+	if (xdev->core.vmgmt_ert_ctrl_platdev &&
+	    XOCL_GET_DRV_PRI(xdev->core.vmgmt_ert_ctrl_platdev) &&
+	    XOCL_GET_DRV_PRI(xdev->core.vmgmt_ert_ctrl_platdev)->ops) {
+		if (!ert_ops->is_version(xdev->core.vmgmt_ert_ctrl_platdev, 1, 0)) {
+			if (slot_hdl) {
+				userpf_err(xdev, "legacy ERT only support one xclbin\n");
+				ret = -EINVAL;
+				goto out;
+			}
+			ret = xocl_kds_update_legacy(xdev, XDEV(xdev)->axlf_obj[slot_hdl]->kds_cfg,
+				       ip_layout, ps_kernel);
+			goto out;
+		}
+	} else {
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			ret = xocl_vmgmt_ert_ctrl_is_version(xdev, 1, 0);
+		}
+		else {
+			ret = xocl_ert_ctrl_is_version(xdev, 1, 0);
+		}
+
+		if (!ret) {
+			if (slot_hdl) {
+				userpf_err(xdev, "legacy ERT only support one xclbin\n");
+				ret = -EINVAL;
+				goto out;
+			}
+			ret = xocl_kds_update_legacy(xdev, XDEV(xdev)->axlf_obj[slot_hdl]->kds_cfg,
+				       ip_layout, ps_kernel);
+			goto out;
+		}
+	}
 	ret = xocl_kds_update_xgq(xdev, slot_hdl, uuid,
 			XDEV(xdev)->axlf_obj[slot_hdl]->kds_cfg, ip_layout, ps_kernel);
 out:
@@ -2480,6 +2523,116 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 		return ret;
 
 	if (!xocl_ert_ctrl_is_version(xdev, 1, 0))
+		return ret;
+
+	/*
+	 * The XGQ Identify command is used to identify the version of firmware which
+	 * can help host to know the different behaviors of the firmware.
+	 */
+	xocl_kds_xgq_identify(xdev, &major, &minor);
+	userpf_info(xdev, "Got ERT XGQ command version %d.%d\n", major, minor);
+
+	ret = xocl_kds_xgq_cfg_start(xdev, XDEV(xdev)->axlf_obj[slot_hdl]->kds_cfg, 0, 0);
+	if (ret)
+		goto out;
+
+	/* ERT XGQ version 2.0 onward supports Cleanup of all CUs/SCUs */
+	if (major == 2 && minor == 0) {
+		if (xdev->reset_ert_cus) {
+			/* This is done only for the first time after xocl driver load.
+			 * Before configuring/unconfiguring CUs/SCUs XOCL driver will make
+			 * sure ERT is in good know status before configure it for the first
+			 * time.
+			 */
+			ret = xocl_kds_xgq_uncfg_cu(xdev, 0, DOMAIN_PL, true);
+			if (ret)
+				goto out;
+
+			ret = xocl_kds_xgq_query_mem(xdev, &XOCL_DRM(xdev)->ps_mem_data);
+			if (ret)
+				userpf_info(xdev, "WARN ! Device doesn't configure for PS Kernel memory\n");
+
+			xdev->reset_ert_cus = false;
+		}
+	}
+
+	/* Unconfigure the SCUs first. There is a case, where there is a
+	 * PS kernel which is opening a PL kernel. In that case, we need to
+	 * destroy PS kernel before destroy PL kernel.
+	 */
+	cu_mgmt = &XDEV(xdev)->kds.scu_mgmt;
+	for (i = 0; i < MAX_CUS; i++) {
+		xcu = cu_mgmt->xcus[i];
+		if (!xcu)
+			continue;
+
+		/* Unregister the SCUs as per slot order */
+		if (xcu->info.slot_idx != slot_hdl)
+			continue;
+
+		/* ERT XGQ version 2.0 onward supports unconfigure CUs/SCUs */
+		if (major == 2 && minor == 0) {
+			ret = xocl_kds_xgq_uncfg_cu(xdev, xcu->info.inst_idx, DOMAIN_PS, false);
+			if (ret)
+				goto out;
+		}
+
+		xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+	}
+
+	cu_mgmt = &XDEV(xdev)->kds.cu_mgmt;
+	for (i = 0; i < MAX_CUS; i++) {
+		xcu = cu_mgmt->xcus[i];
+		if (!xcu)
+			continue;
+
+		/* Unregister the CUs as per slot order */
+		if (xcu->info.slot_idx != slot_hdl)
+			continue;
+
+		/* ERT XGQ version 2.0 onward supports unconfigure CUs/SCUs */
+		if (major == 2 && minor == 0) {
+			ret = xocl_kds_xgq_uncfg_cu(xdev, xcu->info.inst_idx, DOMAIN_PL, false);
+			if (ret)
+				goto out;
+		}
+
+		xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+	}
+
+	ret = xocl_kds_xgq_cfg_end(xdev);
+	if (ret)
+		goto out;
+
+out:
+	if (ret)
+		XDEV(xdev)->kds.bad_state = 1;
+	else
+		kds_reset(&XDEV(xdev)->kds);
+
+	return ret;
+}
+
+int xocl_vmgmt_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
+{
+	int ret = 0;
+	int major = 0, minor = 0;
+	int i = 0;
+	struct xrt_cu *xcu = NULL;
+	struct kds_cu_mgmt *cu_mgmt = NULL;
+
+	XDEV(xdev)->kds.xgq_enable = false;
+	ret = xocl_vmgmt_ert_ctrl_connect(xdev);
+	if (ret) {
+		userpf_info_once(xdev, "ERT will be disabled, ret %d\n", ret);
+			XDEV(xdev)->kds.ert_disable = true;
+			return ret;
+	}
+
+	if (XDEV(xdev)->kds.ert_disable == true)
+		return ret;
+
+	if (!xocl_vmgmt_ert_ctrl_is_version(xdev, 1, 0))
 		return ret;
 
 	/*
@@ -2534,7 +2687,7 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 				goto out;
 		}
 
-		xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		xocl_vmgmt_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
 	}
 
 	cu_mgmt = &XDEV(xdev)->kds.cu_mgmt;
@@ -2554,7 +2707,7 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 				goto out;
 		}
 
-		xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		xocl_vmgmt_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
 	}
 
 	ret = xocl_kds_xgq_cfg_end(xdev);
