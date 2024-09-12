@@ -123,10 +123,9 @@ int xocl_create_hw_ctx_ioctl(struct drm_device *dev, void *data,
 
 	/* Download the XCLBIN to the device first */
 	mutex_lock(&xdev->dev_lock);
-	if (!(xdev->core.is_vmgmt_mbx_version_valid &&
-	    (xdev->core.vmgmt_mbx_protocol_version == 1))) {
-		ret = xocl_read_axlf_helper(drm_p, &axlf_obj_ptr,
-					    drm_hw_ctx->qos, &slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_read_axlf_helper(drm_p, &axlf_obj_ptr,
+					    drm_hw_ctx->qos, &uuid, &slot_id);
 		mutex_unlock(&xdev->dev_lock);
 		if (ret)
 			return ret;
@@ -135,19 +134,17 @@ int xocl_create_hw_ctx_ioctl(struct drm_device *dev, void *data,
 
 		/* Create the HW Context and lock the bitstream */
 		/* Slot id is 0 for now */
-		return xocl_create_hw_context(xdev, filp, drm_hw_ctx, slot_id);
+		return xocl_vmgmt_create_hw_context(xdev, filp, drm_hw_ctx, &uuid, slot_id);
 	}
 
-	ret = xocl_vmgmt_read_axlf_helper(drm_p, &axlf_obj_ptr,
-					  drm_hw_ctx->qos, &uuid, &slot_id);
+	ret = xocl_read_axlf_helper(drm_p, &axlf_obj_ptr, drm_hw_ctx->qos, &slot_id);
 	mutex_unlock(&xdev->dev_lock);
 	if (ret)
 		return ret;
 
 	xdev->is_legacy_ctx = false;
 
-	return xocl_vmgmt_create_hw_context(xdev, filp, drm_hw_ctx, &uuid,
-					    slot_id);
+        return xocl_create_hw_context(xdev, filp, drm_hw_ctx, slot_id);
 }
 
 /*
@@ -372,8 +369,11 @@ static bool ps_xclbin_downloaded(struct xocl_dev *xdev, xuid_t *xclbin_id, uint3
 	for (i = 0; i < MAX_SLOT_SUPPORT; i++) {
 		if (i == DEFAULT_PL_PS_SLOT)
 			continue; 
-
-		err = XOCL_GET_XCLBIN_ID(xdev, downloaded_xclbin, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			err = XOCL_VMGMT_GET_XCLBIN_ID(xdev, downloaded_xclbin, i);
+		} else {
+			err = XOCL_GET_XCLBIN_ID(xdev, downloaded_xclbin, i);
+		}
 		if (err)
 			return ret;
 
@@ -383,8 +383,11 @@ static bool ps_xclbin_downloaded(struct xocl_dev *xdev, xuid_t *xclbin_id, uint3
 			userpf_info(xdev, "xclbin is already downloaded to slot %d\n", i);
 			break;
 		}
-
-		XOCL_PUT_XCLBIN_ID(xdev, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			XOCL_VMGMT_PUT_XCLBIN_ID(xdev, i);
+		} else {
+			XOCL_PUT_XCLBIN_ID(xdev, i);
+		}
 	}
 
 	return ret;
@@ -403,8 +406,11 @@ static bool xclbin_downloaded(struct xocl_dev *xdev, xuid_t *xclbin_id,
 		userpf_info(xdev, "p2p configure changed\n");
 		return false;
 	}
-
-	err = XOCL_GET_XCLBIN_ID(xdev, downloaded_xclbin, slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		err = XOCL_VMGMT_GET_XCLBIN_ID(xdev, downloaded_xclbin, slot_id);
+	} else {
+		err = XOCL_GET_XCLBIN_ID(xdev, downloaded_xclbin, slot_id);
+	}
 	if (err)
 		return ret;
 
@@ -412,8 +418,11 @@ static bool xclbin_downloaded(struct xocl_dev *xdev, xuid_t *xclbin_id,
 		ret = true;
 		userpf_info(xdev, "xclbin is already downloaded\n");
 	}
-
-	XOCL_PUT_XCLBIN_ID(xdev, slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		XOCL_VMGMT_PUT_XCLBIN_ID(xdev, slot_id);
+	} else {
+		XOCL_PUT_XCLBIN_ID(xdev, slot_id);
+	}
 
 	return ret;
 }
@@ -484,6 +493,41 @@ static int xocl_preserve_mem(struct xocl_drm *drm_p, struct mem_topology *new_to
 	return ret;
 }
 
+static int xocl_vmgmt_preserve_mem(struct xocl_drm *drm_p, struct mem_topology *new_topology, size_t size)
+{
+	int ret = 0;
+	struct mem_topology *topology = NULL;
+	struct xocl_dev *xdev = drm_p->xdev;
+	uint32_t legacy_slot_id = DEFAULT_PL_SLOT;
+
+	ret = XOCL_VMGMT_GET_MEM_TOPOLOGY(xdev, topology, legacy_slot_id);
+	if (ret)
+		return ret;
+
+	if (!topology) {
+		XOCL_VMGMT_PUT_MEM_TOPOLOGY(xdev, legacy_slot_id);
+		return 0;
+	}
+
+	/*
+	 * Compare MEM_TOPOLOGY previous vs new.
+	 * Ignore this and keep disable preserve_mem if not for aws.
+	 */
+	if (xocl_vmgmt_icap_get_data(xdev, DATA_RETAIN) && (topology != NULL) &&
+		drm_p->xocl_mm->mm) {
+		if ((size == sizeof_sect(topology, m_mem_data)) &&
+		    !xocl_preserve_memcmp(new_topology, topology, size)) {
+			userpf_info(xdev, "preserving mem_topology.");
+			ret = 1;
+		} else {
+			userpf_info(xdev, "not preserving mem_topology.");
+		}
+	}
+
+	XOCL_VMGMT_PUT_MEM_TOPOLOGY(xdev, legacy_slot_id);
+	return ret;
+}
+
 static bool xocl_xclbin_in_use(struct xocl_dev *xdev)
 {
 	BUG_ON(!xdev);
@@ -501,6 +545,7 @@ xocl_resolver(struct xocl_dev *xdev, struct axlf *axlf, xuid_t *xclbin_id,
 {
 	uint32_t s_id = DEFAULT_PL_PS_SLOT;
 	int ret = 0;
+	bool is_locked = 0;
 
 	if (xocl_axlf_section_header(xdev, axlf, BITSTREAM) ||
 		xocl_axlf_section_header(xdev, axlf, BITSTREAM_PARTIAL_PDI) ||
@@ -511,13 +556,18 @@ xocl_resolver(struct xocl_dev *xdev, struct axlf *axlf, xuid_t *xclbin_id,
 				// We come here if user sets force_xclbin_program
 				// option "true" in xrt.ini under [Runtime] section
 				// and we check if current xclbin is in-use or not
-                                if (xocl_icap_bitstream_is_locked(xdev, s_id)) {
-                                        DRM_WARN("%s current xclbin in-use", __func__);
-                                        ret = -EEXIST;
-                                } else {
-                                        DRM_WARN("%s Force xclbin download", __func__);
-				        *slot_id = s_id;
-                                } 
+				if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+					is_locked = xocl_vmgmt_icap_bitstream_is_locked(xdev, s_id);
+				} else {
+					is_locked = xocl_icap_bitstream_is_locked(xdev, s_id);
+				}
+				if (is_locked) {
+					DRM_WARN("%s current xclbin in-use", __func__);
+					ret = -EEXIST;
+				} else {
+					DRM_WARN("%s Force xclbin download", __func__);
+					*slot_id = s_id;
+				}
 			} else {
 				*slot_id = s_id;
 				ret = -EEXIST;
@@ -657,8 +707,11 @@ int xocl_vmgmt_read_axlf_helper(struct xocl_drm *drm_p,
 		userpf_err(xdev, "here?");
 		goto out_done;
 	}
-
-	preserve_mem = xocl_preserve_mem(drm_p, new_topology, size);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		preserve_mem = xocl_vmgmt_preserve_mem(drm_p, new_topology, size);
+	} else {
+		preserve_mem = xocl_preserve_mem(drm_p, new_topology, size);
+	}
 
 	/* Switching the xclbin, make sure none of the buffers are used. */
 	if (!preserve_mem) {
@@ -828,9 +881,15 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr,
 	const struct axlf_section_header * dtbHeader = NULL;
 	void *ulp_blob;
 	void *kernels;
-	int rc = 0;
+	int rc = 0, is_locked=0, ret = 0;
 
-	if (!xocl_is_unified(xdev)) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_is_unified(xdev);
+	}
+	else {
+		ret = xocl_is_unified(xdev);
+	}
+	if (!ret) {
 		userpf_err(xdev, "XOCL: not unified Shell\n");
 		return -EINVAL;
 	}
@@ -891,7 +950,12 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr,
 	 * 2. A opened context would lock bitstream and hold it. Directly
 	 *    ask icap if bitstream is locked
 	 */
-	if (xocl_icap_bitstream_is_locked(xdev, slot_id)) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		is_locked = xocl_vmgmt_icap_bitstream_is_locked(xdev, slot_id);
+	} else {
+		is_locked = xocl_icap_bitstream_is_locked(xdev, slot_id);
+	}
+	if (is_locked) {
 		err = -EBUSY;
 		goto out_done;
 	}
@@ -905,8 +969,11 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr,
 		err = -EINVAL;
 		goto out_done;
 	}
-
-	preserve_mem = xocl_preserve_mem(drm_p, new_topology, size);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		preserve_mem = xocl_vmgmt_preserve_mem(drm_p, new_topology, size);
+	} else {
+		preserve_mem = xocl_preserve_mem(drm_p, new_topology, size);
+	}
 
 	/* Switching the xclbin, make sure none of the buffers are used. */
 	if (!preserve_mem) {
@@ -1000,7 +1067,13 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr,
 	memcpy(&axlf_obj->kds_cfg, &axlf_ptr->kds_cfg, sizeof(struct drm_xocl_kds));
 
 	XDEV(xdev)->axlf_obj[slot_id] = axlf_obj;
-	err = xocl_icap_download_axlf(xdev, axlf, slot_id);
+
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		err = xocl_vmgmt_icap_download_axlf(xdev, axlf, slot_id);
+	}
+	else {
+		err = xocl_icap_download_axlf(xdev, axlf, slot_id);
+	}
 	/*
 	 * Don't just bail out here, always recreate drm mem
 	 * since we have cleaned it up before download.
@@ -1019,7 +1092,12 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr,
 	if (!err) {
 		err = xocl_kds_update(xdev, XDEV(xdev)->axlf_obj[slot_id]->kds_cfg);
 		if (err) {
-			xocl_icap_clean_bitstream(xdev, slot_id);
+			if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+				xocl_vmgmt_icap_clean_bitstream(xdev, slot_id);
+			}
+			else {
+				xocl_icap_clean_bitstream(xdev, slot_id);
+			}
 		}
 	}
 
@@ -1064,12 +1142,10 @@ int xocl_read_axlf_ioctl(struct drm_device *dev,
 	mutex_lock(&xdev->dev_lock);
 	userpf_info(xdev, "%d", __LINE__);
 
-	if (!(xdev->core.is_vmgmt_mbx_version_valid &&
-	    (xdev->core.vmgmt_mbx_protocol_version == 1))) {
-		err = xocl_read_axlf_helper(drm_p, axlf_obj_ptr, 0, &slot_id); // QOS legacy
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		err = xocl_vmgmt_read_axlf_helper(drm_p, axlf_obj_ptr, 0, &uuid, &slot_id);
 	} else {
-		err = xocl_vmgmt_read_axlf_helper(drm_p, axlf_obj_ptr, 0,
-						  &uuid, &slot_id);
+		err = xocl_read_axlf_helper(drm_p, axlf_obj_ptr, 0, &slot_id);
 	}
 	xdev->is_legacy_ctx = true;
 	mutex_unlock(&xdev->dev_lock);
@@ -1087,7 +1163,11 @@ int xocl_hot_reset_ioctl(struct drm_device *dev, void *data,
 	 * if the reset mailbox opcode is disabled, we don't allow
 	 * user run 'xbutil reset'
 	 */
-	xocl_mailbox_get(xdev, CHAN_DISABLE, &chan_disable);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		xocl_vmgmt_mailbox_get(xdev, CHAN_DISABLE, &chan_disable);
+	} else {
+		xocl_mailbox_get(xdev, CHAN_DISABLE, &chan_disable);
+	}
 	if (chan_disable & (1 << XCL_MAILBOX_REQ_HOT_RESET))
 		return -EOPNOTSUPP;
 

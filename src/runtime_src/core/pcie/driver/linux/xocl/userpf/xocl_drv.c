@@ -134,8 +134,13 @@ static void xocl_mig_cache_read_from_peer(struct xocl_dev *xdev)
 
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
-	ret = xocl_peer_request(xdev,
-		mb_req, reqlen, mig_ecc, &resp_len, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_peer_request(xdev,
+			mb_req, reqlen, mig_ecc, &resp_len, NULL, NULL, 0, 0);
+	} else {
+		ret = xocl_peer_request(xdev,
+			mb_req, reqlen, mig_ecc, &resp_len, NULL, NULL, 0, 0);
+	}
 
 	if (!ret)
 		set_mig_cache_data(xdev, mig_ecc);
@@ -258,12 +263,13 @@ void xocl_reset_notify(struct pci_dev *pdev, bool prepare)
 		ret = xocl_subdev_online_all(xdev);
 		if (ret)
 			xocl_warn(&pdev->dev, "Online subdevs failed %d", ret);
-		(void) xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
 
 		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			(void) xocl_vmgmt_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
 			ret = XOCL_VMGMT_GET_XCLBIN_ID(xdev, xclbin_id, slot_id);
 		}
 		else {
+			(void) xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
 			ret = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, slot_id);
 		}
 		if (ret) {
@@ -285,7 +291,11 @@ void xocl_reset_notify(struct pci_dev *pdev, bool prepare)
 		}
 
 		xocl_kds_reset(xdev, xclbin_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		XOCL_VMGMT_PUT_XCLBIN_ID(xdev, slot_id);
+	} else {
 		XOCL_PUT_XCLBIN_ID(xdev, slot_id);
+	}
 		if (!xdev->core.drm) {
 			xdev->core.drm = xocl_drm_init(xdev);
 			if (!xdev->core.drm) {
@@ -346,13 +356,22 @@ int xocl_program_shell(struct xocl_dev *xdev, bool force)
 		userpf_err(xdev, "online mailbox failed %d", ret);
 		goto failed;
 	}
-	ret = xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
-	if (ret)
-		goto failed;
 
 	userpf_info(xdev, "request mgmtpf to program prp");
-	mbret = xocl_peer_request(xdev, &mbreq, struct_size(&mbreq, data, 1),
-		&ret, &resplen, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+		if (ret)
+			goto failed;
+		mbret = xocl_vmgmt_peer_request(xdev, &mbreq, sizeof(struct xcl_mailbox_req),
+					&ret, &resplen, NULL, NULL, 0, 0);
+	} else {
+		ret = xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+		if (ret)
+			goto failed;
+		mbret = xocl_peer_request(xdev, &mbreq, sizeof(struct xcl_mailbox_req),
+					&ret, &resplen, NULL, NULL, 0, 0);
+	}
+
 	if (mbret)
 		ret = mbret;
 	if (ret) {
@@ -427,8 +446,14 @@ int xocl_hot_reset(struct xocl_dev *xdev, u32 flag)
 		if (flag & XOCL_RESET_NO)
 			return 0;
 
-		mbret = xocl_peer_request(xdev, &mbreq, struct_size(&mbreq, data, 1),
-			&ret, &resplen, NULL, NULL, 0, 6);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			mbret = xocl_vmgmt_peer_request(xdev, &mbreq, sizeof(struct xcl_mailbox_req),
+				&ret, &resplen, NULL, NULL, 0, 6);
+		} else {
+			mbret = xocl_peer_request(xdev, &mbreq, sizeof(struct xcl_mailbox_req),
+				&ret, &resplen, NULL, NULL, 0, 6);
+		}
+
 		/*
 		 * Check the return values mbret & ret (mpd (peer) side response) and confirm
 		 * reset request success.
@@ -450,8 +475,13 @@ int xocl_hot_reset(struct xocl_dev *xdev, u32 flag)
 		return 0;
 	}
 
-	mbret = xocl_peer_request(xdev, &mbreq, struct_size(&mbreq, data, 1),
-		&ret, &resplen, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		mbret = xocl_vmgmt_peer_request(xdev, &mbreq, sizeof(struct xcl_mailbox_req),
+			&ret, &resplen, NULL, NULL, 0, 0);
+	} else {
+		mbret = xocl_peer_request(xdev, &mbreq, sizeof(struct xcl_mailbox_req),
+			&ret, &resplen, NULL, NULL, 0, 0);
+	}
 
 	xocl_reset_notify(xdev->core.pdev, true);
 
@@ -648,12 +678,24 @@ static void xocl_mb_connect(struct xocl_dev *xdev)
 	mb_conn->crc32 = crc32c_le(~0, kaddr, PAGE_SIZE);
 	mb_conn->version = XCL_MB_PROTOCOL_VER;
 
-	ret = xocl_peer_request(xdev, mb_req, reqlen, resp, &resplen,
-		NULL, NULL, 0, 0);
-	(void) xocl_mailbox_set(xdev, CHAN_STATE, resp->conn_flags);
-	(void) xocl_mailbox_set(xdev, CHAN_SWITCH, resp->chan_switch);
-	(void) xocl_mailbox_set(xdev, CHAN_DISABLE, resp->chan_disable);
-	(void) xocl_mailbox_set(xdev, COMM_ID, (u64)(uintptr_t)resp->comm_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_peer_request(xdev, mb_req, reqlen, resp, &resplen,
+			NULL, NULL, 0, 0);
+	} else {
+		ret = xocl_peer_request(xdev, mb_req, reqlen, resp, &resplen,
+			NULL, NULL, 0, 0);
+	}
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		(void) xocl_vmgmt_mailbox_set(xdev, CHAN_STATE, resp->conn_flags);
+		(void) xocl_vmgmt_mailbox_set(xdev, CHAN_SWITCH, resp->chan_switch);
+		(void) xocl_vmgmt_mailbox_set(xdev, CHAN_DISABLE, resp->chan_disable);
+		(void) xocl_vmgmt_mailbox_set(xdev, COMM_ID, (u64)(uintptr_t)resp->comm_id);
+	} else {
+		(void) xocl_mailbox_set(xdev, CHAN_STATE, resp->conn_flags);
+		(void) xocl_mailbox_set(xdev, CHAN_SWITCH, resp->chan_switch);
+		(void) xocl_mailbox_set(xdev, CHAN_DISABLE, resp->chan_disable);
+		(void) xocl_mailbox_set(xdev, COMM_ID, (u64)(uintptr_t)resp->comm_id);
+	}
 
 	/*
 	 * we assume the FPGA is in good state and we can get & save S/N
@@ -687,7 +729,11 @@ int xocl_reclock(struct xocl_dev *xdev, void *data)
 	 * dedicated mouldes can be icap for ultrascale(+) board, or ospi for
 	 * versal ACAP board.
 	 */
-	err = xocl_icap_xclbin_validate_clock_req(xdev, freqs);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		err = xocl_vmgmt_icap_xclbin_validate_clock_req(xdev, freqs);
+	} else {
+		err = xocl_icap_xclbin_validate_clock_req(xdev, freqs);
+	}
 	if (err)
 		return err;
 
@@ -707,8 +753,14 @@ int xocl_reclock(struct xocl_dev *xdev, void *data)
 	mutex_lock(&xdev->dev_lock);
 
 	if (err == 0) {
-		err = xocl_peer_request(xdev, req, reqlen,
-			&msg, &resplen, NULL, NULL, 0, 0);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			err = xocl_vmgmt_peer_request(xdev, req, reqlen,
+				&msg, &resplen, NULL, NULL, 0, 0);
+		} else {
+			err = xocl_peer_request(xdev, req, reqlen,
+				&msg, &resplen, NULL, NULL, 0, 0);
+		}
+
 		if (err == 0)
 			err = msg;
 	}
@@ -769,7 +821,11 @@ static void xocl_mailbox_srv(void *arg, void *data, size_t len,
 		} else if (st->state_flags & XCL_MB_STATE_OFFLINE) {
 			/* Mgmt is offline, mark peer as not ready */
 			userpf_info(xdev, "mgmt driver offline\n");
-			(void) xocl_mailbox_set(xdev, CHAN_STATE, 0);
+			if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+				(void) xocl_vmgmt_mailbox_set(xdev, CHAN_STATE, 0);
+			} else {
+				(void) xocl_mailbox_set(xdev, CHAN_STATE, 0);
+			}
 			xdev->core.is_vmgmt_mbx_version_valid = false;
 			mod_timer(&xdev->core.vmgmt_status_timer,
 				  jiffies + (HZ*5));
@@ -839,7 +895,11 @@ uint64_t xocl_get_data(struct xocl_dev *xdev, enum data_kind kind)
 
 	switch (kind) {
 	case MIG_CALIB:
-		ret = xocl_icap_get_data(xdev, MIG_CALIB);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			ret = xocl_icap_get_data(xdev, MIG_CALIB);
+		} else {
+			ret = xocl_icap_get_data(xdev, MIG_CALIB);
+		}
 		break;
 	default:
 		userpf_err(xdev, "dropped bad request (%d)\n", kind);
@@ -910,8 +970,14 @@ int xocl_refresh_subdevs(struct xocl_dev *xdev)
 		blob_len = offset + resp_len;
 
 		subdev_peer.offset = offset;
-		ret = xocl_peer_request(xdev, mb_req, reqlen,
-			resp, &resp_len, NULL, NULL, 0, 0);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			ret = xocl_vmgmt_peer_request(xdev, mb_req, reqlen,
+				resp, &resp_len, NULL, NULL, 0, 0);
+		} else {
+			ret = xocl_peer_request(xdev, mb_req, reqlen,
+				resp, &resp_len, NULL, NULL, 0, 0);
+		}
+
 		if (ret)
 			goto failed;
 
@@ -997,8 +1063,11 @@ int xocl_refresh_subdevs(struct xocl_dev *xdev)
 			goto failed;
 		}
 	}
-
-	(void) xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		(void) xocl_vmgmt_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+	} else {
+		(void) xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+	}
 
 	ret = xocl_init_sysfs(xdev);
 	if (ret) {
@@ -1437,7 +1506,11 @@ int xocl_vmgmt_refresh_suddevs(struct xocl_dev *xdev)
 //		}
 //	}
 //
-	(void) xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		(void) xocl_vmgmt_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+	} else {
+		(void) xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+	}
 
 	ret = xocl_init_sysfs(xdev);
 	if (ret) {
@@ -1472,8 +1545,14 @@ void xocl_poll_mgmt_status(struct work_struct *w)
 
 	/* Get mailbox protocol version */
 	req.req = XCL_MAILBOX_REQ_PROTOCOL_VERSION;
-	ret = xocl_peer_request(xdev, &req, sizeof(req), &info, &len, NULL,
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_peer_request(xdev, &req, sizeof(req), &info, &len, NULL,
 				NULL, 0, 0);
+	} else {
+		ret = xocl_peer_request(xdev, &req, sizeof(req), &info, &len, NULL,
+				NULL, 0, 0);
+	}
+
 	if (ret) {
 		/* Respin timer */
 		mod_timer(&xdev->vmgmt_status_timer, jiffies + (HZ/10));
@@ -1585,7 +1664,12 @@ static int xocl_hwmon_sdm_init_sysfs(struct xocl_dev *xdev, enum xcl_group_kind 
 
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
-	ret = xocl_peer_request(xdev, mb_req, reqlen, in_buf, &resp_len, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_peer_request(xdev, mb_req, reqlen, in_buf, &resp_len, NULL, NULL, 0, 0);
+	} else {
+		ret = xocl_peer_request(xdev, mb_req, reqlen, in_buf, &resp_len, NULL, NULL, 0, 0);
+	}
+
 	if (ret) {
 		userpf_err(xdev, "sdr peer request failed, err: %d", ret);
 		goto done;
@@ -2324,7 +2408,12 @@ int xocl_userpf_probe(struct pci_dev *pdev,
 	}
 
 	/* Launch the mailbox server. */
-	ret = xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+	} else {
+		ret = xocl_peer_listen(xdev, xocl_mailbox_srv, (void *)xdev);
+	}
+
 	if (ret) {
 		xocl_err(&pdev->dev, "mailbox subdev is not created");
 		goto failed;
