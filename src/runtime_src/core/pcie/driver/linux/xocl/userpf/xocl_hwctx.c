@@ -48,10 +48,10 @@ int xocl_create_hw_context(struct xocl_dev *xdev, struct drm_file *filp,
 
 	if (!client)
 		return -EINVAL;
+
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
 		ret = XOCL_VMGMT_GET_XCLBIN_ID(xdev, xclbin_id, slot_id);
-	}
-	else {
+	} else {
 		ret = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, slot_id);
 	}
 	if (ret)
@@ -66,7 +66,11 @@ int xocl_create_hw_context(struct xocl_dev *xdev, struct drm_file *filp,
 	}
 
 	/* Lock the bitstream. Unlock the same in destroy context */
-	ret = xocl_icap_lock_bitstream(xdev, xclbin_id, slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_icap_lock_bitstream(xdev, xclbin_id, slot_id);
+	} else {
+		ret = xocl_icap_lock_bitstream(xdev, xclbin_id, slot_id);
+	}
 	if (ret) {
 		kds_free_hw_ctx(client, hw_ctx);
 		ret = -EINVAL;
@@ -79,10 +83,9 @@ error_out:
 	mutex_unlock(&client->lock);
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
 		XOCL_VMGMT_PUT_XCLBIN_ID(xdev, slot_id);
-	}
-	else {
+	} else {
 		XOCL_PUT_XCLBIN_ID(xdev, slot_id);
-	}
+		}
 	return ret;
 }
 
@@ -129,7 +132,11 @@ int xocl_destroy_hw_context(struct xocl_dev *xdev, struct drm_file *filp,
         }
 
 	/* Unlock the bitstream for this HW context if no reference is there */
-	(void)xocl_icap_unlock_bitstream(xdev, hw_ctx->xclbin_id, hw_ctx->slot_idx);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		(void)xocl_vmgmt_icap_unlock_bitstream(xdev, hw_ctx->xclbin_id, hw_ctx->slot_idx);
+	} else {
+		(void)xocl_icap_unlock_bitstream(xdev, hw_ctx->xclbin_id, hw_ctx->slot_idx);
+	}
 
 	ret = kds_free_hw_ctx(client, hw_ctx);
 

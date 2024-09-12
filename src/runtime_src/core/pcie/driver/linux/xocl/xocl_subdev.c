@@ -494,18 +494,6 @@ static int __xocl_subdev_construct(xdev_handle_t xdev_hdl,
 				bar_start = core->bars[bar_idx].base_addr;
 				bar_end = core->bars[bar_idx].base_addr +
 						core->bars[bar_idx].range - 1;
-				xocl_xdev_info(xdev_hdl, "bar start: %#llx bar end: %#llx",
-						bar_start, bar_end);
-				if((bar_start <= res[i].start) &&
-						(res[i].end <= bar_end)) {
-					res[i].start -= bar_start;
-					res[i].end -= bar_start;
-				}
-			} else {
-				bar_start = 0x20200000000;
-				bar_end = 0x20207ffffff;
-				xocl_xdev_info(xdev_hdl, "bar start: %#llx bar end: %#llx",
-						bar_start, bar_end);
 				if((bar_start <= res[i].start) &&
 						(res[i].end <= bar_end)) {
 					res[i].start -= bar_start;
@@ -947,7 +935,11 @@ int xocl_subdev_create_all(xdev_handle_t xdev_hdl)
 		/* lookup update table */
 		ret = __xocl_subdev_create_by_id(xdev_hdl, XOCL_SUBDEV_FEATURE_ROM);
 		if (!ret) {
-			xocl_get_raw_header(core, &rom);
+			if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+				xocl_vmgmt_get_raw_header(core, &rom);
+			} else {
+				xocl_get_raw_header(core, &rom);
+			}
 			for (i = 0; i < ARRAY_SIZE(dsa_map); i++) {
 				if (!dsa_map[i].type != XOCL_DSAMAP_VBNV)
 					continue;
