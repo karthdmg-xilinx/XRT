@@ -1866,13 +1866,22 @@ static inline u32 xocl_ddr_count_unified(xdev_handle_t xdev_hdl,
 {
 	struct mem_topology *topo = NULL;
 	uint32_t ret = 0;
-	int err;
+	int err = XOCL_GET_GROUP_TOPOLOGY(xdev_hdl, topo, slot_id);
 
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
-		err = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev_hdl, topo, slot_id);
-	} else {
-		err = XOCL_GET_GROUP_TOPOLOGY(xdev_hdl, topo, slot_id);
-	}
+	if (err)
+		return 0;
+	ret = topo ? topo->m_count : 0;
+	XOCL_PUT_GROUP_TOPOLOGY(xdev_hdl, slot_id);
+
+	return ret;
+}
+
+static inline u32 xocl_vmgmt_ddr_count_unified(xdev_handle_t xdev_hdl,
+					 uint32_t slot_id)
+{
+	struct mem_topology *topo = NULL;
+	uint32_t ret = 0;
+	int err = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev_hdl, topo, slot_id);
 
 	if (err)
 		return 0;

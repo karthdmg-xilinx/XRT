@@ -572,6 +572,132 @@ __xocl_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
 	uint32_t hw_ctx_id = 0;
 	uint32_t slot_id = 0;
 	int ret;
+
+	if (bo_type != XOCL_BO_EXECBUF) {
+		/* Currently userspace will provide the corresponding hw context id.
+		 * Driver has to map that hw context to the corresponding slot id.
+		 * This is not valid for Host memory.
+		 */
+		hw_ctx_id = xocl_bo_slot_idx(args->flags);
+		ret = xocl_get_slot_id_by_hw_ctx_id(xdev, filp, hw_ctx_id);
+		if (ret < 0)
+			return ERR_PTR(ret);
+
+		slot_id = ret;
+		args->flags = xocl_bo_set_slot_idx(args->flags, slot_id);
+	}
+
+	xobj = xocl_create_bo(dev, args->size, args->flags, bo_type);
+	if (IS_ERR(xobj)) {
+		DRM_ERROR("object creation failed idx %d, size 0x%llx\n",
+			xocl_bo_ddr_idx(args->flags), args->size);
+		return xobj;
+	}
+	BO_ENTER("xobj %p, mm_node %p", xobj, xobj->mm_node);
+
+	ddr = (xobj->flags & XOCL_CMA_MEM) ? drm_p->cma_bank_idx :
+		xocl_bo_ddr_idx(args->flags);
+
+	if (xobj->flags == XOCL_BO_P2P) {
+		/*
+		 * DRM allocate contiguous pages, shift the vmapping with
+		 * bar address offset
+		 */
+		ret = XOCL_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
+		if (ret)
+			goto out_free;
+
+		if (topo) {
+			int ret;
+			ulong bar_off;
+
+			ret = xocl_p2p_mem_map(xdev,
+				topo->m_mem_data[ddr].m_base_address,
+				topo->m_mem_data[ddr].m_size * 1024,
+				xobj->mm_node->start -
+				topo->m_mem_data[ddr].m_base_address,
+				xobj->base.size,
+				&bar_off);
+			if (ret) {
+				xocl_xdev_err(xdev, "map P2P failed,ret = %d",
+						ret);
+			} else
+				xobj->p2p_bar_offset = bar_off;
+		}
+
+		XOCL_PUT_GROUP_TOPOLOGY(xdev, slot_id);
+	}
+
+	if (xobj->flags & XOCL_PAGE_ALLOC) {
+		if (xobj->flags & XOCL_P2P_MEM)
+			xobj->pages = xocl_p2p_get_pages(xdev,
+				xobj->p2p_bar_offset, xobj->base.size);
+		else if (xobj->flags & XOCL_DRM_SHMEM)
+			xobj->pages = drm_gem_get_pages(&xobj->base);
+		else if (xobj->flags & XOCL_CMA_MEM) {
+			uint64_t start_addr;
+
+			ret = XOCL_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
+			if (ret)
+				goto out_free;
+			start_addr = topo->m_mem_data[ddr].m_base_address;
+			xobj->pages = xocl_cma_collect_pages(drm_p, start_addr, xobj->mm_node->start, xobj->base.size);
+			XOCL_PUT_GROUP_TOPOLOGY(xdev, slot_id);
+		}
+
+		if (IS_ERR(xobj->pages)) {
+			ret = PTR_ERR(xobj->pages);
+			xobj->pages = NULL;
+			goto out_free;
+		}
+		xobj->sgt = alloc_onetime_sg_table(xobj->pages, 0,
+			xobj->base.size);
+		if (IS_ERR(xobj->sgt)) {
+			ret = PTR_ERR(xobj->sgt);
+			xobj->sgt = NULL;
+			goto out_free;
+		}
+
+		if (xobj->flags & XOCL_HOST_MEM) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0)
+			if (xobj->base.size >= GB(4)) {
+				DRM_ERROR("cannot support BO size >= 4G\n");
+				DRM_ERROR("limited by Linux kernel API\n");
+				ret = -EINVAL;
+				goto out_free;
+			}
+#endif
+			if (!(xobj->flags & XOCL_CMA_MEM)) {
+				xobj->vmapping = vmap(xobj->pages,
+					xobj->base.size >> PAGE_SHIFT,
+					VM_MAP, PAGE_KERNEL);
+				if (!xobj->vmapping) {
+					ret = -ENOMEM;
+					goto out_free;
+				}
+			}
+		}
+	}
+	return xobj;
+
+out_free:
+	xocl_free_bo(&xobj->base);
+	return ERR_PTR(ret);
+}
+
+struct drm_xocl_bo *
+__xocl_vmgmt_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
+		       struct drm_xocl_create_bo *args)
+{
+	struct drm_xocl_bo *xobj;
+	struct xocl_drm *drm_p = dev->dev_private;
+	struct xocl_dev *xdev = drm_p->xdev;
+	unsigned bo_type = xocl_bo_type(args->flags);
+	struct mem_topology *topo = NULL;
+	unsigned ddr = 0;
+	uint32_t hw_ctx_id = 0;
+	uint32_t slot_id = 0;
+	int ret;
 	struct xocl_icap_funcs *icap_ops;
 	struct xocl_dev_core *core = &xdev->core;
 
@@ -605,11 +731,8 @@ __xocl_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
 		 * DRM allocate contiguous pages, shift the vmapping with
 		 * bar address offset
 		 */
-		 if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-			ret = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
-		} else {
-			ret = XOCL_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
-		}
+		ret = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
+
 		if (ret)
 			goto out_free;
 
@@ -631,11 +754,7 @@ __xocl_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
 				xobj->p2p_bar_offset = bar_off;
 		}
 
-		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-			XOCL_VMGMT_PUT_GROUP_TOPOLOGY(xdev, slot_id);
-		} else {
-			XOCL_PUT_GROUP_TOPOLOGY(xdev, slot_id);
-		}
+		XOCL_VMGMT_PUT_GROUP_TOPOLOGY(xdev, slot_id);
 	}
 
 	if (xobj->flags & XOCL_PAGE_ALLOC) {
@@ -647,11 +766,7 @@ __xocl_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
 		else if (xobj->flags & XOCL_CMA_MEM) {
 			uint64_t start_addr;
 
-			if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-				ret  = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
-			} else {
-				ret = XOCL_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
-			}
+			ret  = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
 			if (ret)
 				goto out_free;
 			start_addr = topo->m_mem_data[ddr].m_base_address;

@@ -494,18 +494,6 @@ static int __xocl_subdev_construct(xdev_handle_t xdev_hdl,
 				bar_start = core->bars[bar_idx].base_addr;
 				bar_end = core->bars[bar_idx].base_addr +
 						core->bars[bar_idx].range - 1;
-				xocl_xdev_info(xdev_hdl, "bar start: %#llx bar end: %#llx",
-						bar_start, bar_end);
-				if((bar_start <= res[i].start) &&
-						(res[i].end <= bar_end)) {
-					res[i].start -= bar_start;
-					res[i].end -= bar_start;
-				}
-			} else {
-				bar_start = 0x20200000000;
-				bar_end = 0x20207ffffff;
-				xocl_xdev_info(xdev_hdl, "bar start: %#llx bar end: %#llx",
-						bar_start, bar_end);
 				if((bar_start <= res[i].start) &&
 						(res[i].end <= bar_end)) {
 					res[i].start -= bar_start;

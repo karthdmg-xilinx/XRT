@@ -2525,8 +2525,9 @@ int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
 	    ret = xocl_vmgmt_ert_ctrl_connect(xdev);
 	} else {
 		ret = xocl_ert_ctrl_connect(xdev);
-		if (ret == -ENODEV) {
-			userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
+	}
+	if (ret == -ENODEV) {
+		userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
 			XDEV(xdev)->kds.ert_disable = true;
 		} else if (ret < 0) {
 			userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
@@ -2793,8 +2794,11 @@ int xocl_vmgmt_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 			if (ret)
 				goto out;
 		}
-
-		xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			xocl_vmgmt_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		} else {
+			xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		}
 	}
 
 	ret = xocl_kds_xgq_cfg_end(xdev);
