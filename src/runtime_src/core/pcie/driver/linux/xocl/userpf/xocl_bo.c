@@ -282,7 +282,6 @@ static inline int check_bo_user_reqs(const struct drm_device *dev,
 	int err = 0;
 	unsigned ddr = xocl_bo_ddr_idx(flags);
 	uint32_t slot_id = xocl_bo_slot_idx(flags);
-	struct xocl_icap_funcs *icap_ops;
 	struct xocl_dev_core *core = &xdev->core;
 
 	userpf_info(xdev, "%d", __LINE__);
@@ -320,7 +319,11 @@ static inline int check_bo_user_reqs(const struct drm_device *dev,
 		}
 	}
 
-	ddr_count = XOCL_DDR_COUNT(xdev, slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ddr_count = XOCL_VMGMT_DDR_COUNT(xdev, slot_id);
+	} else {
+		ddr_count = XOCL_DDR_COUNT(xdev, slot_id);
+	}
 	if (ddr_count == 0)
 		return -EINVAL;
 
@@ -432,7 +435,6 @@ static struct drm_xocl_bo *xocl_create_bo(struct drm_device *dev,
 		}
 		memidx = drm_p->cma_bank_idx;
 	}
-#if 0
 	if (memidx == drm_p->cma_bank_idx) {
 		if (xobj->flags &
 		    (XOCL_USER_MEM | XOCL_DRM_IMPORT | XOCL_P2P_MEM)) {
@@ -443,7 +445,6 @@ static struct drm_xocl_bo *xocl_create_bo(struct drm_device *dev,
 		}
 		xobj->flags = XOCL_BO_CMA;
 	}
-#endif
 	if (xobj->flags == XOCL_BO_EXECBUF)
 		xobj->metadata.state = DRM_XOCL_EXECBUF_STATE_ABORT;
 
@@ -571,6 +572,132 @@ __xocl_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
 	uint32_t hw_ctx_id = 0;
 	uint32_t slot_id = 0;
 	int ret;
+
+	if (bo_type != XOCL_BO_EXECBUF) {
+		/* Currently userspace will provide the corresponding hw context id.
+		 * Driver has to map that hw context to the corresponding slot id.
+		 * This is not valid for Host memory.
+		 */
+		hw_ctx_id = xocl_bo_slot_idx(args->flags);
+		ret = xocl_get_slot_id_by_hw_ctx_id(xdev, filp, hw_ctx_id);
+		if (ret < 0)
+			return ERR_PTR(ret);
+
+		slot_id = ret;
+		args->flags = xocl_bo_set_slot_idx(args->flags, slot_id);
+	}
+
+	xobj = xocl_create_bo(dev, args->size, args->flags, bo_type);
+	if (IS_ERR(xobj)) {
+		DRM_ERROR("object creation failed idx %d, size 0x%llx\n",
+			xocl_bo_ddr_idx(args->flags), args->size);
+		return xobj;
+	}
+	BO_ENTER("xobj %p, mm_node %p", xobj, xobj->mm_node);
+
+	ddr = (xobj->flags & XOCL_CMA_MEM) ? drm_p->cma_bank_idx :
+		xocl_bo_ddr_idx(args->flags);
+
+	if (xobj->flags == XOCL_BO_P2P) {
+		/*
+		 * DRM allocate contiguous pages, shift the vmapping with
+		 * bar address offset
+		 */
+		ret = XOCL_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
+		if (ret)
+			goto out_free;
+
+		if (topo) {
+			int ret;
+			ulong bar_off;
+
+			ret = xocl_p2p_mem_map(xdev,
+				topo->m_mem_data[ddr].m_base_address,
+				topo->m_mem_data[ddr].m_size * 1024,
+				xobj->mm_node->start -
+				topo->m_mem_data[ddr].m_base_address,
+				xobj->base.size,
+				&bar_off);
+			if (ret) {
+				xocl_xdev_err(xdev, "map P2P failed,ret = %d",
+						ret);
+			} else
+				xobj->p2p_bar_offset = bar_off;
+		}
+
+		XOCL_PUT_GROUP_TOPOLOGY(xdev, slot_id);
+	}
+
+	if (xobj->flags & XOCL_PAGE_ALLOC) {
+		if (xobj->flags & XOCL_P2P_MEM)
+			xobj->pages = xocl_p2p_get_pages(xdev,
+				xobj->p2p_bar_offset, xobj->base.size);
+		else if (xobj->flags & XOCL_DRM_SHMEM)
+			xobj->pages = drm_gem_get_pages(&xobj->base);
+		else if (xobj->flags & XOCL_CMA_MEM) {
+			uint64_t start_addr;
+
+			ret = XOCL_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
+			if (ret)
+				goto out_free;
+			start_addr = topo->m_mem_data[ddr].m_base_address;
+			xobj->pages = xocl_cma_collect_pages(drm_p, start_addr, xobj->mm_node->start, xobj->base.size);
+			XOCL_PUT_GROUP_TOPOLOGY(xdev, slot_id);
+		}
+
+		if (IS_ERR(xobj->pages)) {
+			ret = PTR_ERR(xobj->pages);
+			xobj->pages = NULL;
+			goto out_free;
+		}
+		xobj->sgt = alloc_onetime_sg_table(xobj->pages, 0,
+			xobj->base.size);
+		if (IS_ERR(xobj->sgt)) {
+			ret = PTR_ERR(xobj->sgt);
+			xobj->sgt = NULL;
+			goto out_free;
+		}
+
+		if (xobj->flags & XOCL_HOST_MEM) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 13, 0)
+			if (xobj->base.size >= GB(4)) {
+				DRM_ERROR("cannot support BO size >= 4G\n");
+				DRM_ERROR("limited by Linux kernel API\n");
+				ret = -EINVAL;
+				goto out_free;
+			}
+#endif
+			if (!(xobj->flags & XOCL_CMA_MEM)) {
+				xobj->vmapping = vmap(xobj->pages,
+					xobj->base.size >> PAGE_SHIFT,
+					VM_MAP, PAGE_KERNEL);
+				if (!xobj->vmapping) {
+					ret = -ENOMEM;
+					goto out_free;
+				}
+			}
+		}
+	}
+	return xobj;
+
+out_free:
+	xocl_free_bo(&xobj->base);
+	return ERR_PTR(ret);
+}
+
+struct drm_xocl_bo *
+__xocl_vmgmt_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
+		       struct drm_xocl_create_bo *args)
+{
+	struct drm_xocl_bo *xobj;
+	struct xocl_drm *drm_p = dev->dev_private;
+	struct xocl_dev *xdev = drm_p->xdev;
+	unsigned bo_type = xocl_bo_type(args->flags);
+	struct mem_topology *topo = NULL;
+	unsigned ddr = 0;
+	uint32_t hw_ctx_id = 0;
+	uint32_t slot_id = 0;
+	int ret;
 	struct xocl_icap_funcs *icap_ops;
 	struct xocl_dev_core *core = &xdev->core;
 
@@ -604,11 +731,8 @@ __xocl_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
 		 * DRM allocate contiguous pages, shift the vmapping with
 		 * bar address offset
 		 */
-		 if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-			ret = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
-		} else {
-			ret = XOCL_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
-		}
+		ret = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
+
 		if (ret)
 			goto out_free;
 
@@ -630,11 +754,7 @@ __xocl_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
 				xobj->p2p_bar_offset = bar_off;
 		}
 
-		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-			XOCL_VMGMT_PUT_GROUP_TOPOLOGY(xdev, slot_id);
-		} else {
-			XOCL_PUT_GROUP_TOPOLOGY(xdev, slot_id);
-		}
+		XOCL_VMGMT_PUT_GROUP_TOPOLOGY(xdev, slot_id);
 	}
 
 	if (xobj->flags & XOCL_PAGE_ALLOC) {
@@ -646,21 +766,13 @@ __xocl_create_bo_ioctl(struct drm_device *dev, struct drm_file *filp,
 		else if (xobj->flags & XOCL_CMA_MEM) {
 			uint64_t start_addr;
 
-			if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-				ret  = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
-			} else {
-				ret = XOCL_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
-			}
+			ret  = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev, topo, slot_id);
 			if (ret)
 				goto out_free;
 			start_addr = topo->m_mem_data[ddr].m_base_address;
 			xobj->pages = xocl_cma_collect_pages(drm_p, start_addr, xobj->mm_node->start, xobj->base.size);
 
-			if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-				XOCL_VMGMT_PUT_GROUP_TOPOLOGY(xdev, slot_id);
-			} else {
-				XOCL_PUT_GROUP_TOPOLOGY(xdev, slot_id);
-			}
+			XOCL_VMGMT_PUT_GROUP_TOPOLOGY(xdev, slot_id);
 		}
 
 		if (IS_ERR(xobj->pages)) {
@@ -710,8 +822,16 @@ int xocl_create_bo_ioctl(struct drm_device *dev,
 	int ret;
 	struct drm_xocl_bo *xobj;
 	struct drm_xocl_create_bo *args = data;
+	struct xocl_drm *drm_p = dev->dev_private;
+	struct xocl_dev *xdev = drm_p->xdev;
 
-	xobj = __xocl_create_bo_ioctl(dev, filp, data);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		xobj = __xocl_vmgmt_create_bo_ioctl(dev, filp, data);
+	}
+	else {
+		xobj = __xocl_create_bo_ioctl(dev, filp, data);
+	}
+
 	if (IS_ERR(xobj))
 		return PTR_ERR(xobj);
 
@@ -952,31 +1072,31 @@ int xocl_sync_bo_ioctl(struct drm_device *dev,
 
 	//drm_clflush_sg(sgt);
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    xocl_vmgmt_dma_acquire_channel(xdev, dir);
+	    channel = xocl_vmgmt_acquire_channel(xdev, dir);
+		if (channel < 0) {
+			DRM_ERROR("BO %d request cannot find channel.\n", args->handle);
+			ret = -EINVAL;
+			goto clear;
+		}
+		ret = xocl_vmgmt_migrate_bo(xdev, sgt, dir, paddr, channel,
+				      args->size);
+		if (ret >= 0)
+			ret = (ret == args->size) ? 0 : -EIO;
+		xocl_vmgmt_release_channel(xdev, dir, channel);
 	} else {
 		channel = xocl_acquire_channel(xdev, dir);
-	}
-	if (channel < 0) {
-		DRM_ERROR("BO %d request cannot find channel.\n", args->handle);
-		ret = -EINVAL;
-		goto clear;
-	}
-	/* Now perform DMA */
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    ret = xocl_vmgmt_dma_migrate_bo(xdev, sgt, dir, paddr, channel,
-				      args->size);
-	} else {
+		if (channel < 0) {
+			DRM_ERROR("BO %d request cannot find channel.\n", args->handle);
+			ret = -EINVAL;
+			goto clear;
+		}
 		ret = xocl_migrate_bo(xdev, sgt, dir, paddr, channel,
 				      args->size);
-	}
-	if (ret >= 0)
-		ret = (ret == args->size) ? 0 : -EIO;
-
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    xocl_vmgmt_dma_release_channel(xdev, dir, channel);
-	} else {
+		if (ret >= 0)
+			ret = (ret == args->size) ? 0 : -EIO;
 		xocl_release_channel(xdev, dir, channel);
 	}
+
 clear:
 	if (args->offset || (args->size != xobj->base.size)) {
 		sg_free_table(sgt);
@@ -1026,30 +1146,31 @@ static int xocl_migrate_unmgd(struct xocl_dev *xdev, uint64_t data_ptr, uint64_t
 	}
 
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    channel = xocl_vmgmt_dma_acquire_channel(xdev, dir);
+	    channel = xocl_vmgmt_acquire_channel(xdev, dir);
+		if (channel < 0) {
+			userpf_err(xdev, "acquire channel failed");
+			ret = -EINVAL;
+			goto clear;
+		}
+		/* Now perform DMA */
+		ret = xocl_vmgmt_migrate_bo(xdev, unmgd.sgt, dir, paddr, channel, size);
+		if (ret >= 0)
+			ret = (ret == size) ? 0 : -EIO;
+		xocl_vmgmt_release_channel(xdev, dir, channel);
 	}  else {
 		channel = xocl_acquire_channel(xdev, dir);
-	}
-
-	if (channel < 0) {
-		userpf_err(xdev, "acquire channel failed");
-		ret = -EINVAL;
-		goto clear;
-	}
-	/* Now perform DMA */
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    ret = xocl_vmgmt_dma_migrate_bo(xdev, unmgd.sgt, dir, paddr, channel, size);
-	} else {
+		if (channel < 0) {
+			userpf_err(xdev, "acquire channel failed");
+			ret = -EINVAL;
+			goto clear;
+		}
+		/* Now perform DMA */
 		ret = xocl_migrate_bo(xdev, unmgd.sgt, dir, paddr, channel, size);
-	}
-	if (ret >= 0)
-		ret = (ret == size) ? 0 : -EIO;
-
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    xocl_vmgmt_dma_release_channel(xdev, dir, channel);
-	} else {
+		if (ret >= 0)
+			ret = (ret == size) ? 0 : -EIO;
 		xocl_release_channel(xdev, dir, channel);
 	}
+
 clear:
 	xocl_finish_unmgd(&unmgd);
 	return ret;
@@ -1277,28 +1398,26 @@ int xocl_copy_import_bo(struct drm_device *dev, struct drm_file *filp,
 		sgt, dir, local_pa, cp_size);
 
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    channel = xocl_vmgmt_dma_acquire_channel(xdev, dir);
+	    channel = xocl_vmgmt_acquire_channel(xdev, dir);
+		if (channel < 0) {
+			DRM_ERROR("DMA channel not available, copy_bo aborted");
+			ret = -ENODEV;
+			goto out;
+		}
+		ret = xocl_vmgmt_migrate_bo(xdev, sgt, dir, local_pa, channel, cp_size);
+		if (ret >= 0)
+			ret = (ret == cp_size) ? 0 : -EIO;
+		xocl_vmgmt_release_channel(xdev, dir, channel);
 	} else {
 		channel = xocl_acquire_channel(xdev, dir);
-	}
-	if (channel < 0) {
-		DRM_ERROR("DMA channel not available, copy_bo aborted");
-		ret = -ENODEV;
-		goto out;
-	}
-
-	/* Now perform the copy via DMA engine */
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    ret = xocl_vmgmt_dma_migrate_bo(xdev, sgt, dir, local_pa, channel, cp_size);
-	} else {
+		if (channel < 0) {
+			DRM_ERROR("DMA channel not available, copy_bo aborted");
+			ret = -ENODEV;
+			goto out;
+		}
 		ret = xocl_migrate_bo(xdev, sgt, dir, local_pa, channel, cp_size);
-	}
-	if (ret >= 0)
-		ret = (ret == cp_size) ? 0 : -EIO;
-
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    xocl_vmgmt_dma_release_channel(xdev, dir, channel);
-	} else {
+		if (ret >= 0)
+			ret = (ret == cp_size) ? 0 : -EIO;
 		xocl_release_channel(xdev, dir, channel);
 	}
 
@@ -1611,14 +1730,18 @@ int xocl_usage_stat_ioctl(struct drm_device *dev, void *data,
 	int	i;
 
 	/* Use default slot id for DMA information */
-	args->mm_channel_count = XOCL_DDR_COUNT(xdev, DEFAULT_PL_SLOT);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		args->mm_channel_count = XOCL_VMGMT_DDR_COUNT(xdev, DEFAULT_PL_SLOT);
+	} else {
+		args->mm_channel_count = XOCL_DDR_COUNT(xdev, DEFAULT_PL_SLOT);
+	}
 	if (args->mm_channel_count > 8)
 		args->mm_channel_count = 8;
 	for (i = 0; i < args->mm_channel_count; i++)
 		xocl_mm_get_usage_stat(drm_p, i, args->mm + i);
 
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    args->dma_channel_count = xocl_vmgmt_dma_get_chan_count(xdev);
+	    args->dma_channel_count = xocl_vmgmt_get_chan_count(xdev);
 	} else {
 		args->dma_channel_count = xocl_get_chan_count(xdev);
 	}
@@ -1628,8 +1751,8 @@ int xocl_usage_stat_ioctl(struct drm_device *dev, void *data,
 
 	for (i = 0; i < args->dma_channel_count; i++) {
 		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-			args->h2c[i] = xocl_vmgmt_dma_get_chan_stat(xdev, i, 1);
-			args->c2h[i] = xocl_vmgmt_dma_get_chan_stat(xdev, i, 0);
+			args->h2c[i] = xocl_vmgmt_get_chan_stat(xdev, i, 1);
+			args->c2h[i] = xocl_vmgmt_get_chan_stat(xdev, i, 0);
 		} else {
 			args->h2c[i] = xocl_get_chan_stat(xdev, i, 1);
 			args->c2h[i] = xocl_get_chan_stat(xdev, i, 0);
@@ -1825,35 +1948,35 @@ int xocl_sync_bo_callback_ioctl(struct drm_device *dev,
 	if (args->cb_data) {
 		/* Now perform DMA */
 		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    ret = xocl_vmgmt_dma_async_migrate_bo(xdev, sgt, dir, paddr, 0, args->size, cb_func, cb_data);
+			ret = xocl_vmgmt_async_migrate_bo(xdev, sgt, dir, paddr, 0, args->size, cb_func, cb_data);
 		} else {
-		ret = xocl_async_migrate_bo(xdev, sgt, dir, paddr, 0, args->size, cb_func, cb_data);
+			ret = xocl_async_migrate_bo(xdev, sgt, dir, paddr, 0, args->size, cb_func, cb_data);
 		}
 	}
 	else {
 		int channel;
 		//drm_clflush_sg(sgt);
 		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-			 channel = xocl_vmgmt_dma_acquire_channel(xdev, dir);
-		}  else {
+			channel = xocl_vmgmt_acquire_channel(xdev, dir);
+			if (channel < 0) {
+				ret = -EINVAL;
+				goto clear;
+			}
+			/* Now perform DMA */
+			ret = xocl_vmgmt_async_migrate_bo(xdev, sgt, dir, paddr, 0, args->size, cb_func, cb_data);
+			if (ret >= 0)
+				ret = (ret == args->size) ? 0 : -EIO;
+			xocl_vmgmt_release_channel(xdev, dir, channel);
+		} else {
 			channel = xocl_acquire_channel(xdev, dir);
-		}
-
-		if (channel < 0) {
-			ret = -EINVAL;
-			goto clear;
-		}
-		/* Now perform DMA */
-		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    ret = xocl_vmgmt_dma_async_migrate_bo(xdev, sgt, dir, paddr, 0, args->size, cb_func, cb_data);
-		} else {
-		ret = xocl_async_migrate_bo(xdev, sgt, dir, paddr, 0, args->size, cb_func, cb_data);
-		}
-		if (ret >= 0)
-			ret = (ret == args->size) ? 0 : -EIO;
-		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-		    xocl_vmgmt_dma_release_channel(xdev, dir, channel);
-		} else {
+			if (channel < 0) {
+				ret = -EINVAL;
+				goto clear;
+			}
+			/* Now perform DMA */
+			ret = xocl_async_migrate_bo(xdev, sgt, dir, paddr, 0, args->size, cb_func, cb_data);
+			if (ret >= 0)
+				ret = (ret == args->size) ? 0 : -EIO;
 			xocl_release_channel(xdev, dir, channel);
 		}
 clear:

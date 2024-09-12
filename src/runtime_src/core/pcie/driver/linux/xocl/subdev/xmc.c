@@ -572,8 +572,14 @@ static void xmc_read_from_peer(struct platform_device *pdev)
 
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
-	(void) xocl_peer_request(xdev,
-		mb_req, reqlen, xcl_sensor, &resp_len, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		(void) xocl_vmgmt_peer_request(xdev,
+			mb_req, reqlen, xcl_sensor, &resp_len, NULL, NULL, 0, 0);
+	} else {
+		(void) xocl_peer_request(xdev,
+			mb_req, reqlen, xcl_sensor, &resp_len, NULL, NULL, 0, 0);
+	}
+
 	set_sensors_data(xmc, xcl_sensor);
 
 done:
@@ -1011,8 +1017,14 @@ static void read_bdinfo_from_peer(struct platform_device *pdev)
 
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
-	ret = xocl_peer_request(xdev,
-		mb_req, reqlen, xmc->bdinfo_raw, &resp_len, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_peer_request(xdev,
+			mb_req, reqlen, xmc->bdinfo_raw, &resp_len, NULL, NULL, 0, 0);
+	} else {
+		ret = xocl_peer_request(xdev,
+			mb_req, reqlen, xmc->bdinfo_raw, &resp_len, NULL, NULL, 0, 0);
+	}
+
 done:
 	if (ret) {
 		/* if we failed to get board info from peer, free it and 
@@ -3165,7 +3177,12 @@ static ssize_t show_hwmon_name(struct device *dev, struct device_attribute *da,
 	char nm[150] = { 0 };
 	int n;
 
-	xocl_get_raw_header(xdev_hdl, &rom);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+        xocl_vmgmt_get_raw_header(xdev_hdl, &rom);
+	} else {
+        xocl_get_raw_header(xdev_hdl, &rom);
+	}
+
 	n = snprintf(nm, sizeof(nm), "%s", rom.VBNVName);
 	if (XMC_PRIVILEGED(xmc))
 		(void) snprintf(nm + n, sizeof(nm) - n, "%s", "_mgmt");
@@ -3575,7 +3592,12 @@ static int load_xmc(struct xocl_xmc *xmc)
 	}
 
 	/* Load XMC and ERT Image */
-	if (!skip_xmc && xocl_mb_mgmt_on(xdev_hdl) && xmc->mgmt_binary_length) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+		ret = xocl_vmgmt_mb_mgmt_on(xdev_hdl);
+	} else {
+		ret = xocl_mb_mgmt_on(xdev_hdl);
+	}
+	if (!skip_xmc && ret && xmc->mgmt_binary_length) {
 		if (xmc->mgmt_binary_length > xmc->range[IO_IMAGE_MGMT]) {
 			xocl_err(&xmc->pdev->dev, "XMC image too long %d",
 				xmc->mgmt_binary_length);
@@ -3587,7 +3609,13 @@ static int load_xmc(struct xocl_xmc *xmc)
 		}
 	}
 
-	if (xocl_mb_sched_on(xdev_hdl) && xmc->sche_binary_length) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+		ret = xocl_vmgmt_mb_sched_on(xdev_hdl);
+	} else {
+		ret = xocl_mb_sched_on(xdev_hdl);
+	}
+
+	if (ret && xmc->sche_binary_length) {
 		if (xmc->sche_binary_length > xmc->range[IO_IMAGE_SCHED]) {
 			xocl_info(&xmc->pdev->dev, "scheduler image too long %d",
 				xmc->sche_binary_length);
@@ -4053,7 +4081,7 @@ static int xmc_probe(struct platform_device *pdev)
 	struct resource *res;
 	void *xdev_hdl;
 	xdev_handle_t xdev = xocl_get_xdev(pdev);
-	int i, err = 0;
+	int i, err = 0, ret = 0;
 
 	xmc = xocl_drvinst_alloc(&pdev->dev, sizeof(*xmc));
 	if (!xmc) {
@@ -4104,7 +4132,12 @@ static int xmc_probe(struct platform_device *pdev)
 				goto failed;
 			}
 		}
-		if (xocl_clk_scale_on(xdev_hdl))
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+			ret = xocl_vmgmt_clk_scale_on(xdev_hdl);
+		} else {
+			ret = xocl_clk_scale_on(xdev_hdl);
+		}
+		if (ret)
 			xmc->priv_data->flags |= XOCL_XMC_CLK_SCALING;
 		if (xocl_cmc_in_bitfile(xdev_hdl))
 			xmc->priv_data->flags |= XOCL_XMC_IN_BITFILE;
@@ -4137,7 +4170,12 @@ static int xmc_probe(struct platform_device *pdev)
 	}
 
 	xdev_hdl = xocl_get_xdev(pdev);
-	if (xocl_mb_mgmt_on(xdev_hdl) || xocl_mb_sched_on(xdev_hdl) ||
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+		ret = xocl_vmgmt_mb_mgmt_on(xdev_hdl);
+	} else {
+		ret = xocl_mb_mgmt_on(xdev_hdl);
+	}
+	if (ret || xocl_mb_sched_on(xdev_hdl) ||
 		autonomous_xmc(pdev)) {
 		xocl_info(&pdev->dev, "Microblaze is supported.");
 		xmc->enabled = true;
@@ -4534,8 +4572,11 @@ static int xmc_load_board_info(struct xocl_xmc *xmc)
 		return 0;
 
 	if (XMC_PRIVILEGED(xmc)) {
-
-		tmp_str = (char *)xocl_icap_get_data(xdev, EXP_BMC_VER);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			tmp_str = (char *)xocl_vmgmt_icap_get_data(xdev, EXP_BMC_VER);
+		} else {
+			tmp_str = (char *)xocl_icap_get_data(xdev, EXP_BMC_VER);
+		}
 		if (tmp_str) {
 			strncpy(xmc->exp_bmc_ver, tmp_str,
 				sizeof(xmc->exp_bmc_ver) - 1);

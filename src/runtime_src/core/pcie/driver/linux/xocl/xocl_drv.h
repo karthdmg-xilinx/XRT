@@ -777,55 +777,55 @@ struct xocl_rom_funcs {
 	(struct xocl_rom_funcs *)XOCL_GET_DRV_PRI(XDEV(xdev)->vmgmt_rom_platdev)->ops : \
 	NULL)
 
-#define xocl_vmgmt_rom_is_unified(xdev) \
+#define xocl_vmgmt_is_unified(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->is_unified(XDEV(xdev)->vmgmt_rom_platdev) : true)
 
-#define xocl_vmgmt_rom_mb_mgmt_on(xdev) \
+#define xocl_vmgmt_mb_mgmt_on(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->mb_mgmt_on(XDEV(xdev)->vmgmt_rom_platdev) : false)
 
-#define xocl_vmgmt_rom_mb_sched_on(xdev) \
+#define xocl_vmgmt_mb_sched_on(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->mb_sched_on(XDEV(xdev)->vmgmt_rom_platdev) : false)
 
-#define xocl_vmgmt_rom_cdma_addr(xdev) \
+#define xocl_vmgmt_cdma_addr(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->cdma_addr(XDEV(xdev)->vmgmt_rom_platdev) : 0)
 
-#define xocl_vmgmt_rom_clk_scale_on(xdev) \
+#define xocl_vmgmt_clk_scale_on(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->runtime_clk_scale_on(XDEV(xdev)->vmgmt_rom_platdev) : false)
 
-#define xocl_vmgmt_rom_get_ddr_channel_count(xdev) \
+#define xocl_vmgmt_get_ddr_channel_count(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->get_ddr_channel_count(XDEV(xdev)->vmgmt_rom_platdev) : 0)
 
-#define xocl_vmgmt_rom_get_ddr_channel_size(xdev) \
+#define xocl_vmgmt_get_ddr_channel_size(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->get_ddr_channel_size(XDEV(xdev)->vmgmt_rom_platdev) : 0)
 
-#define xocl_vmgmt_rom_is_are(xdev) \
+#define xocl_vmgmt_is_are(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->is_are(XDEV(xdev)->vmgmt_rom_platdev) : false)
 
-#define xocl_vmgmt_rom_is_aws(xdev) \
+#define xocl_vmgmt_is_aws(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->is_aws(XDEV(xdev)->vmgmt_rom_platdev) : false)
 
-#define xocl_vmgmt_rom_verify_timestamp(xdev, ts) \
+#define xocl_vmgmt_verify_timestamp(xdev, ts) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->verify_timestamp(XDEV(xdev)->vmgmt_rom_platdev, ts) : false)
 
-#define xocl_vmgmt_rom_get_raw_header(xdev, header) \
+#define xocl_vmgmt_get_raw_header(xdev, header) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
-	 PLAT_ROM_CTRL_OPS(xdev)->get_raw_header(XDEV(xdev)->vmgmt_rom_platdev, ts) : -ENODEV)
+	 PLAT_ROM_CTRL_OPS(xdev)->get_raw_header(XDEV(xdev)->vmgmt_rom_platdev, header) : -ENODEV)
 
 #define xocl_vmgmt_rom_load_firmware(xdev, fw, len) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->load_firmware(XDEV(xdev)->vmgmt_rom_platdev, fw, len) : -ENODEV)
 
-#define xocl_vmgmt_rom_passthrough_virtualization_on(xdev) \
+#define xocl_vmgmt_passthrough_virtualization_on(xdev) \
 	(PLAT_ROM_CTRL_OPS(xdev) ? \
 	 PLAT_ROM_CTRL_OPS(xdev)->passthrough_virtualization_on(XDEV(xdev)->vmgmt_rom_platdev) : false)
 
@@ -943,27 +943,27 @@ struct xocl_dma_funcs {
 	(struct xocl_dma_funcs *)XOCL_GET_DRV_PRI(XDEV(xdev)->vmgmt_dma_platdev)->ops : \
 	NULL)
 
-#define xocl_vmgmt_dma_migrate_bo(xdev, sgt, to_dev, paddr, chan, len) \
+#define xocl_vmgmt_migrate_bo(xdev, sgt, to_dev, paddr, chan, len) \
 	(PLAT_DMA_CTRL_OPS(xdev) ? \
 	 PLAT_DMA_CTRL_OPS(xdev)->migrate_bo(XDEV(xdev)->vmgmt_dma_platdev, sgt, to_dev, paddr, chan, len) : 0)
 
-#define xocl_vmgmt_dma_async_migrate_bo(xdev, sgt, to_dev, paddr, chan, len, cb_fn, ctx_ptr) \
+#define xocl_vmgmt_async_migrate_bo(xdev, sgt, to_dev, paddr, chan, len, cb_fn, ctx_ptr) \
 	(PLAT_DMA_CTRL_OPS(xdev) ? \
 	 PLAT_DMA_CTRL_OPS(xdev)->async_migrate_bo(XDEV(xdev)->vmgmt_dma_platdev, sgt, to_dev, paddr, chan, len, cb_fn, ctx_ptr) : 0)
 
-#define xocl_vmgmt_dma_acquire_channel(xdev, dir) \
+#define xocl_vmgmt_acquire_channel(xdev, dir) \
 	(PLAT_DMA_CTRL_OPS(xdev) ? \
 	 PLAT_DMA_CTRL_OPS(xdev)->ac_chan(XDEV(xdev)->vmgmt_dma_platdev, dir) : 0)
 
-#define xocl_vmgmt_dma_release_channel(xdev, dir, chan) \
+#define xocl_vmgmt_release_channel(xdev, dir, chan) \
 	(PLAT_DMA_CTRL_OPS(xdev) ? \
 	 PLAT_DMA_CTRL_OPS(xdev)->rel_chan(XDEV(xdev)->vmgmt_dma_platdev, dir, chan) : 0)
 
-#define xocl_vmgmt_dma_get_chan_count(xdev) \
+#define xocl_vmgmt_get_chan_count(xdev) \
 	(PLAT_DMA_CTRL_OPS(xdev) ? \
 	 PLAT_DMA_CTRL_OPS(xdev)->get_chan_count(XDEV(xdev)->vmgmt_dma_platdev) : 0)
 
-#define xocl_vmgmt_dma_get_chan_stat(xdev, chan, write) \
+#define xocl_vmgmt_get_chan_stat(xdev, chan, write) \
 	(PLAT_DMA_CTRL_OPS(xdev) ? \
 	 PLAT_DMA_CTRL_OPS(xdev)->get_chan_stat(XDEV(xdev)->vmgmt_dma_platdev, chan, write) : 0)
 
@@ -1404,27 +1404,27 @@ struct xocl_mailbox_funcs {
 	(struct xocl_mailbox_funcs *)XOCL_GET_DRV_PRI(XDEV(xdev)->vmgmt_mbx_platdev)->ops : \
 	NULL)
 
-#define xocl_vmgmt_mbx_peer_request(xdev, req, reqlen, resp, resplen, cb, cbarg, rx_timeout, tx_timeout) \
+#define xocl_vmgmt_peer_request(xdev, req, reqlen, resp, resplen, cb, cbarg, rx_timeout, tx_timeout) \
 	(PLAT_MAILBOX_CTRL_OPS(xdev) ? \
 	 PLAT_MAILBOX_CTRL_OPS(xdev)->request(XDEV(xdev)->vmgmt_mbx_platdev, req, reqlen, resp, resplen, cb, cbarg, rx_timeout, tx_timeout) : 0)
 
-#define xocl_vmgmt_mbx_peer_response(xdev, req, reqid, buf, len) \
+#define xocl_vmgmt_peer_response(xdev, req, reqid, buf, len) \
 	(PLAT_MAILBOX_CTRL_OPS(xdev) ? \
 	 PLAT_MAILBOX_CTRL_OPS(xdev)->post_response(XDEV(xdev)->vmgmt_mbx_platdev, req, reqid, buf, len) : 0)
 
-#define xocl_vmgmt_mbx_peer_notify(xdev, req, reqlen) \
+#define xocl_vmgmt_peer_notify(xdev, req, reqlen) \
 	(PLAT_MAILBOX_CTRL_OPS(xdev) ? \
 	 PLAT_MAILBOX_CTRL_OPS(xdev)->post_notify(XDEV(xdev)->vmgmt_mbx_platdev, req, reqlen) : 0)
 
-#define xocl_vmgmt_mbx_peer_listen(xdev, cb, cbarg) \
+#define xocl_vmgmt_peer_listen(xdev, cb, cbarg) \
 	(PLAT_MAILBOX_CTRL_OPS(xdev) ? \
 	 PLAT_MAILBOX_CTRL_OPS(xdev)->listen(XDEV(xdev)->vmgmt_mbx_platdev, cb, cbarg) : 0)
 
-#define xocl_vmgmt_mbx_set(xdev, kind, data) \
+#define xocl_vmgmt_mailbox_set(xdev, kind, data) \
 	(PLAT_MAILBOX_CTRL_OPS(xdev) ? \
 	 PLAT_MAILBOX_CTRL_OPS(xdev)->set(XDEV(xdev)->vmgmt_mbx_platdev, kind, data) : 0)
 
-#define	xocl_vmgmt_mbx_get(xdev, kind, data)				\
+#define	xocl_vmgmt_mailbox_get(xdev, kind, data)				\
 	(PLAT_MAILBOX_CTRL_OPS(xdev) ? \
 	 PLAT_MAILBOX_CTRL_OPS(xdev)->get(XDEV(xdev)->vmgmt_mbx_platdev, kind, data) : 0)
 
@@ -1831,7 +1831,7 @@ static inline int xocl_get_pl_slot(xdev_handle_t xdev_hdl, uint32_t *slot_id)
 	int ret = 0;
 
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
-		ret = XOCL_GET_XCLBIN_ID(xdev_hdl, xclbin_id, DEFAULT_PL_SLOT);
+		ret = XOCL_VMGMT_GET_XCLBIN_ID(xdev_hdl, xclbin_id, DEFAULT_PL_SLOT);
 	} else {
 		/* Check if DEFAULT_PL_SLOT has a xclbin loaded */
 		ret = XOCL_GET_XCLBIN_ID(xdev_hdl, xclbin_id, DEFAULT_PL_SLOT);
@@ -1851,7 +1851,14 @@ static inline void xocl_icap_clean_bitstream_all(xdev_handle_t xdev_hdl)
 
 	/* Free all the bitstream */
         for (slot_id = 0; slot_id < MAX_SLOT_SUPPORT; slot_id++)
+		{
+			if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+                xocl_vmgmt_icap_clean_bitstream(xdev_hdl, slot_id);
+			}
+			else {
                 xocl_icap_clean_bitstream(xdev_hdl, slot_id);
+			}
+		}
 }
 
 static inline u32 xocl_ddr_count_unified(xdev_handle_t xdev_hdl,
@@ -1859,23 +1866,27 @@ static inline u32 xocl_ddr_count_unified(xdev_handle_t xdev_hdl,
 {
 	struct mem_topology *topo = NULL;
 	uint32_t ret = 0;
-	int err;
-
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
-		err = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev_hdl, topo, slot_id);
-	} else {
-		err = XOCL_GET_GROUP_TOPOLOGY(xdev_hdl, topo, slot_id);
-	}
+	int err = XOCL_GET_GROUP_TOPOLOGY(xdev_hdl, topo, slot_id);
 
 	if (err)
 		return 0;
 	ret = topo ? topo->m_count : 0;
+	XOCL_PUT_GROUP_TOPOLOGY(xdev_hdl, slot_id);
 
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
-		XOCL_VMGMT_PUT_GROUP_TOPOLOGY(xdev_hdl, slot_id);
-	} else {
-		XOCL_PUT_GROUP_TOPOLOGY(xdev_hdl, slot_id);
-	}
+	return ret;
+}
+
+static inline u32 xocl_vmgmt_ddr_count_unified(xdev_handle_t xdev_hdl,
+					 uint32_t slot_id)
+{
+	struct mem_topology *topo = NULL;
+	uint32_t ret = 0;
+	int err = XOCL_VMGMT_GET_GROUP_TOPOLOGY(xdev_hdl, topo, slot_id);
+
+	if (err)
+		return 0;
+	ret = topo ? topo->m_count : 0;
+	XOCL_VMGMT_PUT_GROUP_TOPOLOGY(xdev_hdl, slot_id);
 
 	return ret;
 }
@@ -1884,6 +1895,9 @@ static inline u32 xocl_ddr_count_unified(xdev_handle_t xdev_hdl,
 #define	XOCL_DDR_COUNT(xdev, slot)			\
 	(xocl_is_unified(xdev) ? xocl_ddr_count_unified(xdev, slot) :	\
 	xocl_get_ddr_channel_count(xdev))
+#define	XOCL_VMGMT_DDR_COUNT(xdev, slot)			\
+	(xocl_vmgmt_is_unified(xdev) ? xocl_vmgmt_ddr_count_unified(xdev, slot) :	\
+	xocl_vmgmt_get_ddr_channel_count(xdev))
 #define XOCL_IS_STREAM(topo, idx)					\
 	(topo->m_mem_data[idx].m_type == MEM_STREAMING || \
 	 topo->m_mem_data[idx].m_type == MEM_STREAMING_CONNECTION)

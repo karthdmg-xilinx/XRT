@@ -386,8 +386,13 @@ static uint32_t icap_multislot_version_from_peer(struct platform_device *pdev)
 
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
-	(void) xocl_peer_request(xdev,
-		mb_req, reqlen, &xcl_multislot, &resp_len, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		(void) xocl_vmgmt_peer_request(xdev,
+			mb_req, reqlen, &xcl_multislot, &resp_len, NULL, NULL, 0, 0);
+	} else {
+		(void) xocl_peer_request(xdev,
+			mb_req, reqlen, &xcl_multislot, &resp_len, NULL, NULL, 0, 0);
+	}
 
 	vfree(mb_req);
 
@@ -419,8 +424,13 @@ static void icap_read_from_peer(struct platform_device *pdev)
 
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
-	(void) xocl_peer_request(xdev,
-		mb_req, reqlen, &xcl_hwicap, &resp_len, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		(void) xocl_vmgmt_peer_request(xdev,
+			mb_req, reqlen, &xcl_hwicap, &resp_len, NULL, NULL, 0, 0);
+	} else {
+		(void) xocl_peer_request(xdev,
+			mb_req, reqlen, &xcl_hwicap, &resp_len, NULL, NULL, 0, 0);
+	}
 
 	icap_set_data(icap, &xcl_hwicap);
 
@@ -1148,7 +1158,7 @@ static int icap_download_boot_firmware(struct platform_device *pdev)
 	struct pci_dev *pcidev = XOCL_PL_TO_PCI_DEV(pdev);
 	xdev_handle_t xdev = xocl_get_xdev(pdev);
 	struct axlf *bin_obj_axlf;
-	int err = 0;
+	int err = 0, ret = 0;
 	uint64_t mbBinaryOffset = 0;
 	uint64_t mbBinaryLength = 0;
 	const struct axlf_section_header *mbHeader = 0;
@@ -1160,13 +1170,23 @@ static int icap_download_boot_firmware(struct platform_device *pdev)
 	if (!ICAP_PRIVILEGED(icap))
 		return -EPERM;
 
-	err = xocl_rom_load_firmware(xdev, &fw_buf, &fw_size);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		err = xocl_vmgmt_rom_load_firmware(xdev, &fw_buf, &fw_size);
+	} else {
+		err = xocl_rom_load_firmware(xdev, &fw_buf, &fw_size);
+	}
 	if (err)
 		return err;
 
 	bin_obj_axlf = (struct axlf *)fw_buf;
 
-	if (xocl_mb_sched_on(xdev)) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_mb_sched_on(xdev);
+	} else {
+		ret = xocl_mb_sched_on(xdev);
+	}
+
+	if (ret) {
 		const char *sched_bin = XDEV(xdev)->priv.sched_bin;
 		char bin[32] = {0}; 
 
@@ -1210,7 +1230,12 @@ static int icap_download_boot_firmware(struct platform_device *pdev)
 		}
 	}
 
-	if (xocl_mb_mgmt_on(xdev)) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_mb_mgmt_on(xdev);
+	} else {
+		ret = xocl_mb_mgmt_on(xdev);
+	}
+	if (ret) {
 		/* Try locating the board mgmt binary. */
 		mbHeader = xrt_xclbin_get_section_hdr(bin_obj_axlf, FIRMWARE);
 		if (mbHeader) {
@@ -1258,8 +1283,14 @@ static int icap_post_download_rp(struct platform_device *pdev)
 	struct icap *icap = platform_get_drvdata(pdev);
 	xdev_handle_t xdev = xocl_get_xdev(pdev);
 	bool load_mbs = false;
+	int ret = 0;
 
-	if (xocl_mb_mgmt_on(xdev) && icap->rp_mgmt_bin) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_mb_mgmt_on(xdev);
+	} else {
+		ret = xocl_mb_mgmt_on(xdev);
+	}
+	if (ret && icap->rp_mgmt_bin) {
 		xocl_mb_load_mgmt_image(xdev, icap->rp_mgmt_bin,
 			icap->rp_mgmt_bin_len);
 		ICAP_INFO(icap, "stashed mb mgmt binary, len %ld",
@@ -1270,7 +1301,12 @@ static int icap_post_download_rp(struct platform_device *pdev)
 		load_mbs = true;
 	}
 
-	if (xocl_mb_sched_on(xdev) && icap->rp_sche_bin) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_mb_sched_on(xdev);
+	} else {
+		ret = xocl_mb_sched_on(xdev);
+	}
+	if (ret && icap->rp_sche_bin) {
 		xocl_mb_load_sche_image(xdev, icap->rp_sche_bin,
 			icap->rp_sche_bin_len);
 		ICAP_INFO(icap, "stashed mb sche binary, len %ld",
@@ -1327,8 +1363,14 @@ static int icap_download_rp(struct platform_device *pdev, int level, int flag)
 		goto end;
 
 	else if (flag == RP_DOWNLOAD_NORMAL) {
-		(void) xocl_peer_notify(xocl_get_xdev(icap->icap_pdev), &mbreq,
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			(void) xocl_vmgmt_peer_notify(xocl_get_xdev(icap->icap_pdev), &mbreq,
 				sizeof(struct xcl_mailbox_req));
+		} else {
+			(void) xocl_peer_notify(xocl_get_xdev(icap->icap_pdev), &mbreq,
+				sizeof(struct xcl_mailbox_req));
+		}
+
 		ICAP_INFO(icap, "Notified userpf to program rp");
 		goto end;
 	}
@@ -2036,7 +2078,11 @@ static int __icap_peer_xclbin_download(struct icap *icap, struct axlf *xclbin, u
 	/* Check icap version before transfer xclbin thru mailbox. */
 	icap_ver = icap_multislot_version_from_peer(icap->icap_pdev);
 
-	xocl_mailbox_get(xdev, CHAN_STATE, &ch_state);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		xocl_vmgmt_mailbox_get(xdev, CHAN_STATE, &ch_state);
+	} else {
+		xocl_mailbox_get(xdev, CHAN_STATE, &ch_state);
+	}
 	data_len = icap_peer_xclbin_prepare(icap, xclbin, icap_ver, ch_state,
 		       slot_id, &mb_req);
 	if (data_len < 0)
@@ -2072,8 +2118,13 @@ static int __icap_peer_xclbin_download(struct icap *icap, struct axlf *xclbin, u
 	 */
 	timeout = max((size_t)timeout, 50UL);
 
-	(void) xocl_peer_request(xdev, mb_req, data_len,
-		&msgerr, &resplen, NULL, NULL, timeout, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		(void) xocl_vmgmt_peer_request(xdev, mb_req, data_len,
+			&msgerr, &resplen, NULL, NULL, timeout, 0);
+	} else {
+		(void) xocl_peer_request(xdev, mb_req, data_len,
+			&msgerr, &resplen, NULL, NULL, timeout, 0);
+	}
 
 	vfree(mb_req);
 
@@ -2268,10 +2319,16 @@ static int icap_calibrate_mig(struct platform_device *pdev, uint32_t slot_id)
 {
 	struct icap *icap = platform_get_drvdata(pdev);
 	xdev_handle_t xdev = xocl_get_xdev(icap->icap_pdev);
-	int err = 0;
+	int err = 0, ret = 0;
 
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_is_unified(xdev);
+	}
+	else {
+		ret = xocl_is_unified(xdev);
+	}
 	/* Wait for mig recalibration */
-	if ((xocl_is_unified(xdev) || XOCL_DSA_XPR_ON(xdev)))
+	if ((ret || XOCL_DSA_XPR_ON(xdev)))
 		err = calibrate_mig(icap, slot_id);
 
 	return err;

@@ -203,7 +203,11 @@ static int xocl_add_context(struct xocl_dev *xdev, struct kds_client *client,
 			goto out;
 		}
 
-		ret = xocl_icap_lock_bitstream(xdev, &args->xclbin_id, slot_id);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			ret = xocl_vmgmt_icap_lock_bitstream(xdev, &args->xclbin_id, slot_id);
+		} else {
+			ret = xocl_icap_lock_bitstream(xdev, &args->xclbin_id, slot_id);
+		}
 		if (ret) {
 			goto out;
 		}
@@ -275,7 +279,13 @@ out1:
  	 * to free it here.
  	 */	 
 	if (bitstream_locked)
-		(void) xocl_icap_unlock_bitstream(xdev, &args->xclbin_id, slot_id);
+	{
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			(void) xocl_vmgmt_icap_unlock_bitstream(xdev, &args->xclbin_id, slot_id);
+		} else {
+			(void) xocl_icap_unlock_bitstream(xdev, &args->xclbin_id, slot_id);
+		}
+	}
 
 out:
 	vfree(client->ctx);
@@ -338,8 +348,11 @@ static int xocl_del_context(struct xocl_dev *xdev, struct kds_client *client,
 		vfree(client->ctx->xclbin_id);
 		client->ctx->xclbin_id = NULL;
 		slot_id = client->ctx->slot_idx;
-		(void) xocl_icap_unlock_bitstream(xdev,
-				&args->xclbin_id, slot_id);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			(void) xocl_vmgmt_icap_unlock_bitstream(xdev, &args->xclbin_id, slot_id);
+		} else {
+			(void) xocl_icap_unlock_bitstream(xdev, &args->xclbin_id, slot_id);
+		}
 		vfree(client->ctx);
 		client->ctx = NULL;
 	}
@@ -971,16 +984,22 @@ void xocl_destroy_client(struct xocl_dev *xdev, void **priv)
 	mutex_lock(&client->lock);
 	/* Cleanup the Legacy context here */
 	if (client->ctx && client->ctx->xclbin_id) {
-		(void) xocl_icap_unlock_bitstream(xdev, client->ctx->xclbin_id,
-				client->ctx->slot_idx);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			(void) xocl_vmgmt_icap_unlock_bitstream(xdev, client->ctx->xclbin_id, client->ctx->slot_idx);
+		} else {
+			(void) xocl_icap_unlock_bitstream(xdev, client->ctx->xclbin_id, client->ctx->slot_idx);
+		}
 		vfree(client->ctx->xclbin_id);
 	}
 
 	/* Cleanup the new HW context here */
         list_for_each_entry_safe(hw_ctx, next, &client->hw_ctx_list, link) {
 		/* Unlock the bitstream for this HW context if no reference is there */
-		(void)xocl_icap_unlock_bitstream(xdev, hw_ctx->xclbin_id,
-			       hw_ctx->slot_idx);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			(void)xocl_vmgmt_icap_unlock_bitstream(xdev, hw_ctx->xclbin_id, hw_ctx->slot_idx);
+		} else {
+			(void)xocl_icap_unlock_bitstream(xdev, hw_ctx->xclbin_id, hw_ctx->slot_idx);
+		}
 		kds_free_hw_ctx(client, hw_ctx);
 	}
 	mutex_unlock(&client->lock);
@@ -1106,8 +1125,11 @@ static int xocl_kds_get_mem_idx(struct xocl_dev *xdev, int ip_index,
 	int mem_data_idx = 0;
 	int i;
 
-	XOCL_GET_CONNECTIVITY(xdev, conn, slot_id);
-
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		XOCL_VMGMT_GET_CONNECTIVITY(xdev, conn, slot_id);
+	} else {
+		XOCL_GET_CONNECTIVITY(xdev, conn, slot_id);
+	}
 	if (conn) {
 		/* The "last" argument of fast adapter would connect to cmdmem */
 		for (i = 0; i < conn->m_count; ++i) {
@@ -1121,8 +1143,11 @@ static int xocl_kds_get_mem_idx(struct xocl_dev *xdev, int ip_index,
 			}
 		}
 	}
-
-	XOCL_PUT_CONNECTIVITY(xdev, slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		XOCL_VMGMT_PUT_CONNECTIVITY(xdev, slot_id);
+	} else {
+		XOCL_PUT_CONNECTIVITY(xdev, slot_id);
+	}
 
 	return mem_data_idx;
 }
@@ -1149,9 +1174,13 @@ static int xocl_detect_fa_cmdmem(struct xocl_dev *xdev)
 		userpf_err(xdev, "Xclbin is not present");
 		return ret;
 	}
-
-	XOCL_GET_IP_LAYOUT(xdev, ip_layout, slot_id);
-	XOCL_GET_MEM_TOPOLOGY(xdev, mem_topo, slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		XOCL_VMGMT_GET_IP_LAYOUT(xdev, ip_layout, slot_id);
+		XOCL_VMGMT_GET_MEM_TOPOLOGY(xdev, mem_topo, slot_id);
+	} else {
+		XOCL_GET_IP_LAYOUT(xdev, ip_layout, slot_id);
+		XOCL_GET_MEM_TOPOLOGY(xdev, mem_topo, slot_id);
+	}
 
 	if (!ip_layout || !mem_topo)
 		goto done;
@@ -1219,8 +1248,14 @@ static int xocl_detect_fa_cmdmem(struct xocl_dev *xdev)
 	XDEV(xdev)->kds.cmdmem.size = size;
 
 done:
-	XOCL_PUT_MEM_TOPOLOGY(xdev, slot_id);
-	XOCL_PUT_IP_LAYOUT(xdev, slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		XOCL_VMGMT_PUT_MEM_TOPOLOGY(xdev, slot_id);
+		XOCL_VMGMT_PUT_IP_LAYOUT(xdev, slot_id);
+	} else {
+		XOCL_PUT_MEM_TOPOLOGY(xdev, slot_id);
+		XOCL_PUT_IP_LAYOUT(xdev, slot_id);
+	}
+
 	return ret;
 }
 
@@ -2451,14 +2486,14 @@ int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
 	    ret = xocl_vmgmt_ert_ctrl_connect(xdev);
 	} else {
 		ret = xocl_ert_ctrl_connect(xdev);
-		if (ret == -ENODEV) {
-			userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
+	}
+	if (ret == -ENODEV) {
+		userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
 			XDEV(xdev)->kds.ert_disable = true;
-		} else if (ret < 0) {
-			userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
-			ret = -EINVAL;
-			goto out;
-		}
+	} else if (ret < 0) {
+		userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
+		ret = -EINVAL;
+		goto out;
 	}
 
 /* Try config legacy ERT firmware */
@@ -2522,7 +2557,13 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 	if (XDEV(xdev)->kds.ert_disable == true)
 		return ret;
 
-	if (!xocl_ert_ctrl_is_version(xdev, 1, 0))
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_ert_ctrl_is_version(xdev, 1, 0);
+	}
+	else {
+		ret = xocl_ert_ctrl_is_version(xdev, 1, 0);
+	}
+	if (!ret)
 		return ret;
 
 	/*
@@ -2576,8 +2617,11 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 			if (ret)
 				goto out;
 		}
-
-		xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			xocl_vmgmt_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		} else {
+			xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		}
 	}
 
 	cu_mgmt = &XDEV(xdev)->kds.cu_mgmt;
@@ -2596,8 +2640,11 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 			if (ret)
 				goto out;
 		}
-
-		xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			xocl_vmgmt_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		} else {
+			xocl_ert_ctrl_unset_xgq(xdev, xcu->info.xgq);
+		}
 	}
 
 	ret = xocl_kds_xgq_cfg_end(xdev);

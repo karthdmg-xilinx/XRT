@@ -481,13 +481,20 @@ static int mb_start(struct xocl_mb *mb)
 	xocl_info(&mb->pdev->dev, "MGMT Image magic word, 0x%x",
 		READ_IMAGE_MGMT(mb, 0));
 
-	if (xocl_mb_mgmt_on(xdev_hdl)) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+		xocl_vmgmt_mb_mgmt_on(xdev_hdl);
 		xocl_info(&mb->pdev->dev, "Copying mgmt image len %d",
 			mb->mgmt_binary_length);
 		COPY_MGMT(mb, mb->mgmt_binary, mb->mgmt_binary_length);
+		xocl_vmgmt_mb_sched_on(xdev_hdl);
+	} else {
+		xocl_mb_mgmt_on(xdev_hdl);
+		xocl_info(&mb->pdev->dev, "Copying mgmt image len %d",
+			mb->mgmt_binary_length);
+		COPY_MGMT(mb, mb->mgmt_binary, mb->mgmt_binary_length);
+		xocl_mb_sched_on(xdev_hdl);
 	}
-
-	if (xocl_mb_sched_on(xdev_hdl)) {
+	if (ret) {
 		xocl_info(&mb->pdev->dev, "Copying scheduler image len %d",
 			mb->sche_binary_length);
 		COPY_SCHE(mb, mb->sche_binary, mb->sche_binary_length);

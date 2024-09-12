@@ -253,7 +253,11 @@ static int hwmon_sdm_read_from_peer(struct platform_device *pdev, int repo_type,
 
 	memcpy(mb_req->data, &subdev_peer, data_len);
 
-	ret = xocl_peer_request(xdev, mb_req, reqlen, in_buf, &resp_len, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_peer_request(xdev, mb_req, reqlen, in_buf, &resp_len, NULL, NULL, 0, 0);
+	} else {
+		ret = xocl_peer_request(xdev, mb_req, reqlen, in_buf, &resp_len, NULL, NULL, 0, 0);
+	}
 
 done:
 	vfree(mb_req);
@@ -446,7 +450,11 @@ static ssize_t show_hwmon_name(struct device *dev, struct device_attribute *da,
 	char nm[150] = { 0 };
 	int n;
 
-	xocl_get_raw_header(xdev_hdl, &rom);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+		xocl_vmgmt_get_raw_header(xdev_hdl, &rom);
+	} else {
+		xocl_get_raw_header(xdev_hdl, &rom);
+	}
 	n = snprintf(nm, sizeof(nm), "%s", rom.VBNVName);
 	if (sdm->privileged)
 		(void) snprintf(nm + n, sizeof(nm) - n, "%s", "_hwmon_sdm_mgmt");

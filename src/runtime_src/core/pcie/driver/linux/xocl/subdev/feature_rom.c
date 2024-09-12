@@ -796,15 +796,8 @@ static int feature_rom_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, rom);
 
 	data = dev_get_platdata(&pdev->dev);
-#ifdef DZ_DEBUG
+
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-		memcpy(&rom->header, data, sizeof(*data));
-		goto skip_dtb;
-	}
-#endif
-	if (!strcmp(data->VBNVName, "xilinx_v70_gen5x8_qdma_base_2")) {
-		memcpy(&rom->header, data, sizeof(*data));
-	} else if (!strcmp(data->VBNVName, "xilinx_v70pq2_gen5x8_qdma_base_2")) {
 		memcpy(&rom->header, data, sizeof(*data));
 	} else {
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -828,7 +821,7 @@ static int feature_rom_probe(struct platform_device *pdev)
 				(void)get_header_from_iomem(rom);
 		}
 	}
-skip_dtb:
+
 	if (strstr(rom->header.VBNVName, "-xare")) {
 		/*
 		 * ARE device, ARE is mapped like another DDR inside FPGA;
