@@ -102,7 +102,13 @@ int xocl_ctx_ioctl(struct drm_device *dev, void *data,
 	return ret;
 }
 
+<<<<<<< HEAD
  /* a lock on xclbin if it has not been acquired before. Also return the hw_context
+=======
+/*
+ * Create a hw context on a Slot. First Load the given xclbin to a slot and take
+ * a lock on xclbin if it has not been acquired before. Also return the hw_context
+>>>>>>> c1fe1fcd77d24daafcaca6f7a9d57992e38c1dca
  * once loaded succfully. Shared the same context for all context requests
  * for that process if loded into same slot.
  */
@@ -498,6 +504,7 @@ static int xocl_vmgmt_preserve_mem(struct xocl_drm *drm_p, struct mem_topology *
 	int ret = 0;
 	struct mem_topology *topology = NULL;
 	struct xocl_dev *xdev = drm_p->xdev;
+<<<<<<< HEAD
 	uint32_t legacy_slot_id = DEFAULT_PL_PS_SLOT;
 
 	ret = XOCL_VMGMT_GET_MEM_TOPOLOGY(xdev, topology, legacy_slot_id);
@@ -660,7 +667,11 @@ int xocl_vmgmt_read_axlf_helper(struct xocl_drm *drm_p,
 		goto out_done;
 	}
 	/* Update the slot */
+<<<<<<< HEAD
 	*slot = DEFAULT_PL_PS_SLOT;
+=======
+	*slot = DEFAULT_PL_SLOT;
+>>>>>>> c1fe1fcd77d24daafcaca6f7a9d57992e38c1dca
 	if (xocl_axlf_section_header(xdev, axlf, BITSTREAM) ||
 	    xocl_axlf_section_header(xdev, axlf, BITSTREAM_PARTIAL_PDI) ||
 	    !xocl_axlf_section_header(xdev, axlf, SOFT_KERNEL)) {
