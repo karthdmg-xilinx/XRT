@@ -498,7 +498,7 @@ static int xocl_vmgmt_preserve_mem(struct xocl_drm *drm_p, struct mem_topology *
 	int ret = 0;
 	struct mem_topology *topology = NULL;
 	struct xocl_dev *xdev = drm_p->xdev;
-	uint32_t legacy_slot_id = DEFAULT_PL_SLOT;
+	uint32_t legacy_slot_id = DEFAULT_PL_PS_SLOT;
 
 	ret = XOCL_VMGMT_GET_MEM_TOPOLOGY(xdev, topology, legacy_slot_id);
 	if (ret)
@@ -660,7 +660,7 @@ int xocl_vmgmt_read_axlf_helper(struct xocl_drm *drm_p,
 		goto out_done;
 	}
 	/* Update the slot */
-	*slot = DEFAULT_PL_SLOT;
+	*slot = DEFAULT_PL_PS_SLOT;
 	if (xocl_axlf_section_header(xdev, axlf, BITSTREAM) ||
 	    xocl_axlf_section_header(xdev, axlf, BITSTREAM_PARTIAL_PDI) ||
 	    !xocl_axlf_section_header(xdev, axlf, SOFT_KERNEL)) {
