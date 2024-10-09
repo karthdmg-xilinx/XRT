@@ -265,6 +265,9 @@ void xocl_kds_cus_disable(struct xocl_dev *xdev);
 int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hd, xuid_t *uuid,
 			  struct ip_layout *ip_layout,
 			  struct ps_kernel_node *ps_kernel);
+int xocl_vmgmt_kds_register_cus(struct xocl_dev *xdev, int slot_hd, xuid_t *uuid,
+			  struct ip_layout *ip_layout,
+			  struct ps_kernel_node *ps_kernel);
 int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hd);
 int xocl_vmgmt_kds_unregister_cus(struct xocl_dev *xdev, int slot_hd);
 int xocl_kds_xgq_query_mem(struct xocl_dev *xdev, struct mem_data *mem_data);

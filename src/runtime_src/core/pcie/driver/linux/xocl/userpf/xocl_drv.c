@@ -168,14 +168,19 @@ int xocl_register_cus(xdev_handle_t xdev_hdl, int slot_hdl, xuid_t *uuid,
 {
 	struct xocl_dev *xdev = container_of(XDEV(xdev_hdl), struct xocl_dev, core);
 
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		return xocl_vmgmt_kds_register_cus(xdev, slot_hdl, uuid, ip_layout, ps_kernel);
+	}
+	else {
 	return xocl_kds_register_cus(xdev, slot_hdl, uuid, ip_layout, ps_kernel);
+	}
 }
 
 int xocl_unregister_cus(xdev_handle_t xdev_hdl, int slot_hdl)
 {
 	struct xocl_dev *xdev = container_of(XDEV(xdev_hdl), struct xocl_dev, core);
 	int ret = 0;
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
 		ret = xocl_vmgmt_kds_unregister_cus(xdev, slot_hdl);
 	}
 	else
