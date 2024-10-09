@@ -1245,6 +1245,14 @@ void xclmgmt_mailbox_srv(void *arg, void *data, size_t len,
 		vfree(resp);
 		break;
 	}
+	case XCL_MAILBOX_REQ_PROTOCOL_VERSION: {
+		struct xcl_mailbox_info resp;
+
+		resp.version = XCL_MB_PROTOCOL_VER;
+		(void) xocl_peer_response(lro, req->req, msgid, &resp,
+					  sizeof(resp));
+		break;
+	}
 	default:
 		mgmt_err(lro, "unknown peer request opcode: %d\n", req->req);
 		break;

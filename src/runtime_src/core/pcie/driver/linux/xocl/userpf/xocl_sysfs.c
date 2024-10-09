@@ -26,7 +26,12 @@ static ssize_t xclbinuuid_show(struct device *dev,
 	int i = 0;
 
 	for (i = 0; i < MAX_SLOT_SUPPORT; i++) {
-		err = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			err = XOCL_VMGMT_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		}
+		else {
+			err = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		}
 		if (err)
 			return cnt;
 
@@ -35,7 +40,11 @@ static ssize_t xclbinuuid_show(struct device *dev,
 
 		cnt += sprintf(buf + cnt, "%pUb\n", xclbin_id ? xclbin_id : 0);
 
-		XOCL_PUT_XCLBIN_ID(xdev, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			XOCL_VMGMT_PUT_XCLBIN_ID(xdev, i);
+		} else {
+			XOCL_PUT_XCLBIN_ID(xdev, i);
+		}
 		xclbin_id = NULL;
 	}
 
@@ -102,7 +111,12 @@ static ssize_t kdsstat_show(struct device *dev,
 	u32 i = 0;
 
 	for (i = 0; i < MAX_SLOT_SUPPORT; i++) {
-		err = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			err = XOCL_VMGMT_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		}
+		else {
+			err = XOCL_GET_XCLBIN_ID(xdev, xclbin_id, i);
+		}
 		if (err) {
 			size += sprintf(buf + size, "unable to give xclbin id");
 			return size;
@@ -114,7 +128,11 @@ static ssize_t kdsstat_show(struct device *dev,
 		size += sprintf(buf + size, "xclbin:\t\t\t%pUb\n",
 				xclbin_id ? xclbin_id : 0);
 		
-		XOCL_PUT_XCLBIN_ID(xdev, i);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			XOCL_VMGMT_PUT_XCLBIN_ID(xdev, i);
+		} else {
+			XOCL_PUT_XCLBIN_ID(xdev, i);
+		}
 		xclbin_id = NULL;
 	}
 
@@ -151,7 +169,12 @@ static ssize_t xocl_mm_stat(struct xocl_dev *xdev, char *buf, bool raw)
 
 	mutex_lock(&xdev->dev_lock);
 
-	err = XOCL_GET_MEM_TOPOLOGY(xdev, topo, legacy_slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		err = XOCL_VMGMT_GET_MEM_TOPOLOGY(xdev, topo, legacy_slot_id);
+	}
+	else {
+		err = XOCL_GET_MEM_TOPOLOGY(xdev, topo, legacy_slot_id);
+	}
 	if (err) {
 		mutex_unlock(&xdev->dev_lock);
 		return err;
@@ -223,7 +246,12 @@ static ssize_t xocl_mm_stat(struct xocl_dev *xdev, char *buf, bool raw)
 	}
 
 done:
-	XOCL_PUT_MEM_TOPOLOGY(xdev, legacy_slot_id);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		XOCL_VMGMT_PUT_MEM_TOPOLOGY(xdev, legacy_slot_id);
+	}
+	else {
+		XOCL_PUT_MEM_TOPOLOGY(xdev, legacy_slot_id);
+	}
 	mutex_unlock(&xdev->dev_lock);
 	return size;
 }
@@ -686,7 +714,11 @@ static ssize_t mailbox_connect_state_show(struct device *dev,
 	struct xocl_dev *xdev = dev_get_drvdata(dev);
 	uint64_t ret = 0;
 
-	xocl_mailbox_get(xdev, CHAN_STATE, &ret);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		xocl_vmgmt_mailbox_get(xdev, CHAN_STATE, &ret);
+	} else {
+		xocl_mailbox_get(xdev, CHAN_STATE, &ret);
+	}
 	return sprintf(buf, "0x%llx\n", ret);
 }
 static DEVICE_ATTR_RO(mailbox_connect_state);
@@ -697,7 +729,11 @@ static ssize_t config_mailbox_channel_disable_show(struct device *dev,
 	struct xocl_dev *xdev = dev_get_drvdata(dev);
 	uint64_t ret = 0;
 
-	xocl_mailbox_get(xdev, CHAN_DISABLE, &ret);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		xocl_vmgmt_mailbox_get(xdev, CHAN_DISABLE, &ret);
+	} else {
+		xocl_mailbox_get(xdev, CHAN_DISABLE, &ret);
+	}
 	return sprintf(buf, "0x%llx\n", ret);
 }
 static DEVICE_ATTR_RO(config_mailbox_channel_disable);
@@ -708,7 +744,11 @@ static ssize_t config_mailbox_channel_switch_show(struct device *dev,
 	struct xocl_dev *xdev = dev_get_drvdata(dev);
 	uint64_t ret = 0;
 
-	xocl_mailbox_get(xdev, CHAN_SWITCH, &ret);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		xocl_mailbox_get(xdev, CHAN_SWITCH, &ret);
+	} else {
+		xocl_mailbox_get(xdev, CHAN_SWITCH, &ret);
+	}
 	return sprintf(buf, "0x%llx\n", ret);
 }
 static DEVICE_ATTR_RO(config_mailbox_channel_switch);
@@ -718,7 +758,11 @@ static ssize_t config_mailbox_comm_id_show(struct device *dev,
 {
 	struct xocl_dev *xdev = dev_get_drvdata(dev);
 
-	xocl_mailbox_get(xdev, COMM_ID, (u64 *)buf);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		xocl_vmgmt_mailbox_get(xdev, COMM_ID, (u64 *)buf);
+	} else {
+		xocl_mailbox_get(xdev, COMM_ID, (u64 *)buf);
+	}
 	return XCL_COMM_ID_SIZE;
 }
 static DEVICE_ATTR_RO(config_mailbox_comm_id);
@@ -730,7 +774,11 @@ static ssize_t ready_show(struct device *dev,
 	uint64_t ch_state = 0, ret = 0, daemon_state = 0;
 	uint64_t ch_disable = 0, ch_switch = 0;
 
-	xocl_mailbox_get(xdev, CHAN_STATE, &ch_state);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		xocl_mailbox_get(xdev, CHAN_STATE, &ch_state);
+	} else {
+		xocl_mailbox_get(xdev, CHAN_STATE, &ch_state);
+	}
 
 	if (ch_state & XCL_MB_PEER_SAME_DOMAIN)
 		ret = (ch_state & XCL_MB_PEER_READY) ? 1 : 0;
@@ -753,9 +801,16 @@ static ssize_t ready_show(struct device *dev,
 		 *  the xclbins would be loaded through h/w mailbox, and would
 		 *  end up whole mailbox being disabled.
 		 */
-		xocl_mailbox_get(xdev, DAEMON_STATE, &daemon_state);
-		xocl_mailbox_get(xdev, CHAN_SWITCH, &ch_switch);
-		xocl_mailbox_get(xdev, CHAN_DISABLE, &ch_disable);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			xocl_vmgmt_mailbox_get(xdev, DAEMON_STATE, &daemon_state);
+			xocl_vmgmt_mailbox_get(xdev, CHAN_SWITCH, &ch_switch);
+			xocl_vmgmt_mailbox_get(xdev, CHAN_DISABLE, &ch_disable);
+		} else {
+			xocl_mailbox_get(xdev, DAEMON_STATE, &daemon_state);
+			xocl_mailbox_get(xdev, CHAN_SWITCH, &ch_switch);
+			xocl_mailbox_get(xdev, CHAN_DISABLE, &ch_disable);
+		}
+
 		ret = ((ch_state & XCL_MB_PEER_READY) && (daemon_state ||
 			(!ch_switch && ch_disable))) ? 1 : 0;
 	}

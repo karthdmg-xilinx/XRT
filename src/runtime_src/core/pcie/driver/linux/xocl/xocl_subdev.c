@@ -935,7 +935,11 @@ int xocl_subdev_create_all(xdev_handle_t xdev_hdl)
 		/* lookup update table */
 		ret = __xocl_subdev_create_by_id(xdev_hdl, XOCL_SUBDEV_FEATURE_ROM);
 		if (!ret) {
-			xocl_get_raw_header(core, &rom);
+			if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
+				xocl_vmgmt_get_raw_header(core, &rom);
+			} else {
+				xocl_get_raw_header(core, &rom);
+			}
 			for (i = 0; i < ARRAY_SIZE(dsa_map); i++) {
 				if (!dsa_map[i].type != XOCL_DSAMAP_VBNV)
 					continue;

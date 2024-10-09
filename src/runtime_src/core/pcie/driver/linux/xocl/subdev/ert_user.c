@@ -699,13 +699,19 @@ done:
 static int ert_cfg_cmd(struct xocl_ert_user *ert_user, struct xrt_ert_command *ecmd)
 {
 	xdev_handle_t xdev = xocl_get_xdev(ert_user->pdev);
-	uint32_t *cdma = xocl_rom_cdma_addr(xdev);
+	uint32_t *cdma;
 	unsigned int dsa = ert_user->ert_cfg_priv.dsa;
 	unsigned int major = ert_user->ert_cfg_priv.major;
 	struct ert_configure_cmd *cfg = (struct ert_configure_cmd *)ecmd->xcmd->execbuf;
 	bool dataflow_enabled = cfg->dataflow;
 	unsigned int ert_num_slots = 0, slot_size = 0, max_slot_num;
 	uint64_t cq_range = ert_user->queue->size;
+
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+	 cdma = xocl_rom_cdma_addr(xdev);
+	} else {
+	 cdma = xocl_rom_cdma_addr(xdev);
+	}
 
 	if (cmd_opcode(ecmd) != ERT_CONFIGURE)
 		return -EINVAL;
