@@ -2375,6 +2375,7 @@ static int xocl_kds_update_xgq(struct xocl_dev *xdev, int slot_hdl,
 			goto create_regular_cu;
 
 		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			printk("*** karthik set up xgq");
 			xgq = xocl_vmgmt_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
 		} else {
 			xgq = xocl_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
@@ -2475,22 +2476,19 @@ void xocl_kds_cus_disable(struct xocl_dev *xdev)
 
 /* The caller needs to make sure ip_layout and ps_kernel section is locked */
 int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
-			  struct ip_layout *ip_layout,
-			  struct ps_kernel_node *ps_kernel)
+                          struct ip_layout *ip_layout,
+                          struct ps_kernel_node *ps_kernel)
 {
 	int ret = 0;
 	struct xocl_ert_ctrl_funcs *ert_ops;
 	XDEV(xdev)->kds.xgq_enable = false;
 <<<<<<< HEAD
 
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    ret = xocl_vmgmt_ert_ctrl_connect(xdev);
-	} else {
-		ret = xocl_ert_ctrl_connect(xdev);
-	}
+	XDEV(xdev)->kds.xgq_enable = false;
+	ret = xocl_ert_ctrl_connect(xdev);
 	if (ret == -ENODEV) {
 		userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
-			XDEV(xdev)->kds.ert_disable = true;
+		XDEV(xdev)->kds.ert_disable = true;
 	} else if (ret < 0) {
 		userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
 		ret = -EINVAL;
@@ -2598,12 +2596,8 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 	if (XDEV(xdev)->kds.ert_disable == true)
 		return ret;
 
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-		ret = xocl_vmgmt_ert_ctrl_is_version(xdev, 1, 0);
-	}
-	else {
-		ret = xocl_ert_ctrl_is_version(xdev, 1, 0);
-	}
+	ret = xocl_ert_ctrl_is_version(xdev, 1, 0);
+
 	if (!ret)
 		return ret;
 
