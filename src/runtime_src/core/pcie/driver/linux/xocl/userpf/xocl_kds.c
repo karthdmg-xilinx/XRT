@@ -1126,6 +1126,7 @@ static int xocl_kds_get_mem_idx(struct xocl_dev *xdev, int ip_index,
 	int i;
 
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		printk("karthik get connectibvity ");
 		XOCL_VMGMT_GET_CONNECTIVITY(xdev, conn, slot_id);
 	} else {
 		XOCL_GET_CONNECTIVITY(xdev, conn, slot_id);
@@ -1144,6 +1145,7 @@ static int xocl_kds_get_mem_idx(struct xocl_dev *xdev, int ip_index,
 		}
 	}
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			printk("karthik put connectibvity ");
 		XOCL_VMGMT_PUT_CONNECTIVITY(xdev, slot_id);
 	} else {
 		XOCL_PUT_CONNECTIVITY(xdev, slot_id);
@@ -1175,6 +1177,7 @@ static int xocl_detect_fa_cmdmem(struct xocl_dev *xdev)
 		return ret;
 	}
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			printk("karthik get iplayout and mem topology ");
 		XOCL_VMGMT_GET_IP_LAYOUT(xdev, ip_layout, slot_id);
 		XOCL_VMGMT_GET_MEM_TOPOLOGY(xdev, mem_topo, slot_id);
 	} else {
@@ -1249,6 +1252,7 @@ static int xocl_detect_fa_cmdmem(struct xocl_dev *xdev)
 
 done:
 	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			printk("karthik put mem and ip layout");
 		XOCL_VMGMT_PUT_MEM_TOPOLOGY(xdev, slot_id);
 		XOCL_VMGMT_PUT_IP_LAYOUT(xdev, slot_id);
 	} else {
@@ -2287,8 +2291,6 @@ static int xocl_kds_update_xgq(struct xocl_dev *xdev, int slot_hdl,
 		goto out;
 	}
 
-        XDEV(xdev)->kds.cu_mgmt.rw_shared = cfg.rw_shared;
-
 	/* Don't send config command if ERT doesn't present */
 	if (!XDEV(xdev)->kds.ert)
 		goto create_regular_cu;
@@ -2297,8 +2299,6 @@ static int xocl_kds_update_xgq(struct xocl_dev *xdev, int slot_hdl,
 		XDEV(xdev)->kds.ert_disable = true;
 		goto create_regular_cu;
 	}
-        else
-                XDEV(xdev)->kds.ert_disable = false;
 
 	// Soft Kernel Info
 	scu_info = kzalloc(MAX_CUS * sizeof(struct xrt_cu_info), GFP_KERNEL);
@@ -2401,6 +2401,7 @@ static int xocl_kds_update_xgq(struct xocl_dev *xdev, int slot_hdl,
 			goto create_regular_cu;
 
 		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		printk("karthik setup xgq ");
 			xgq = xocl_vmgmt_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
 		} else {
 			xgq = xocl_ert_ctrl_setup_xgq(xdev, resp.xgq_id, resp.offset);
@@ -2476,8 +2477,8 @@ void xocl_kds_cus_disable(struct xocl_dev *xdev)
 
 /* The caller needs to make sure ip_layout and ps_kernel section is locked */
 int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
-                          struct ip_layout *ip_layout,
-                          struct ps_kernel_node *ps_kernel)
+			  struct ip_layout *ip_layout,
+			  struct ps_kernel_node *ps_kernel)
 {
 	int ret = 0;
 	struct xocl_ert_ctrl_funcs *ert_ops;
@@ -2485,14 +2486,30 @@ int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
 <<<<<<< HEAD
 
 	XDEV(xdev)->kds.xgq_enable = false;
-	ret = xocl_ert_ctrl_connect(xdev);
-	if (ret == -ENODEV) {
-		userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
-		XDEV(xdev)->kds.ert_disable = true;
-	} else if (ret < 0) {
-		userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
-		ret = -EINVAL;
-		goto out;
+
+	if (xdev->core.vmgmt_ert_ctrl_platdev &&
+	    XOCL_GET_DRV_PRI(xdev->core.vmgmt_ert_ctrl_platdev) &&
+	    XOCL_GET_DRV_PRI(xdev->core.vmgmt_ert_ctrl_platdev)->ops) {
+		ert_ops = XOCL_GET_DRV_PRI(xdev->core.vmgmt_ert_ctrl_platdev)->ops;
+		ret = ert_ops->connect(xdev->core.vmgmt_ert_ctrl_platdev);
+		if (ret == -ENODEV) {
+			userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
+			XDEV(xdev)->kds.ert_disable = true;
+		} else if (ret < 0) {
+			userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
+			ret = -EINVAL;
+			goto out;
+		}
+	} else {
+		ret = xocl_ert_ctrl_connect(xdev);
+		if (ret == -ENODEV) {
+			userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
+			XDEV(xdev)->kds.ert_disable = true;
+		} else if (ret < 0) {
+			userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
+			ret = -EINVAL;
+			goto out;
+		}
 	}
 
 /* Try config legacy ERT firmware */
@@ -2577,6 +2594,9 @@ out:
 	return ret;
 }
 
+
+
+
 int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 {
 	int ret = 0;
@@ -2584,6 +2604,7 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 	int i = 0;
 	struct xrt_cu *xcu = NULL;
 	struct kds_cu_mgmt *cu_mgmt = NULL;
+	struct xocl_ert_ctrl_funcs *ert_ops;
 
 	XDEV(xdev)->kds.xgq_enable = false;
 	ret = xocl_ert_ctrl_connect(xdev);
@@ -2593,8 +2614,8 @@ int xocl_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 		return ret;
 	}
 
-	if (XDEV(xdev)->kds.ert_disable == true)
-		return ret;
+		if (XDEV(xdev)->kds.ert_disable == true)
+			return ret;
 
 	ret = xocl_ert_ctrl_is_version(xdev, 1, 0);
 
@@ -2918,9 +2939,4 @@ out:
 	return ret;
 }
 
-int xocl_kds_set_cu_read_range(struct xocl_dev *xdev, u32 cu_idx,
-			       u32 start, u32 size)
-{
-	return kds_set_cu_read_range(&XDEV(xdev)->kds, cu_idx, start, size);
-}
 
