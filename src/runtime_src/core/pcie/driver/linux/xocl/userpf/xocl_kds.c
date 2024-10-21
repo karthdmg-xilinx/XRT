@@ -2483,9 +2483,6 @@ int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
 	int ret = 0;
 	struct xocl_ert_ctrl_funcs *ert_ops;
 	XDEV(xdev)->kds.xgq_enable = false;
-<<<<<<< HEAD
-
-	XDEV(xdev)->kds.xgq_enable = false;
 
 	if (xdev->core.vmgmt_ert_ctrl_platdev &&
 	    XOCL_GET_DRV_PRI(xdev->core.vmgmt_ert_ctrl_platdev) &&
@@ -2533,47 +2530,6 @@ int xocl_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
 		else {
 			ret = xocl_ert_ctrl_is_version(xdev, 1, 0);
 		}
-
-=======
-
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-	    ret = xocl_vmgmt_ert_ctrl_connect(xdev);
-	} else {
-		ret = xocl_ert_ctrl_connect(xdev);
-	}
-	if (ret == -ENODEV) {
-		userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
-			XDEV(xdev)->kds.ert_disable = true;
-		} else if (ret < 0) {
-			userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
-			ret = -EINVAL;
-			goto out;
-		}
-	}
-
-/* Try config legacy ERT firmware */
-	if (xdev->core.vmgmt_ert_ctrl_platdev &&
-	    XOCL_GET_DRV_PRI(xdev->core.vmgmt_ert_ctrl_platdev) &&
-	    XOCL_GET_DRV_PRI(xdev->core.vmgmt_ert_ctrl_platdev)->ops) {
-		if (!ert_ops->is_version(xdev->core.vmgmt_ert_ctrl_platdev, 1, 0)) {
-			if (slot_hdl) {
-				userpf_err(xdev, "legacy ERT only support one xclbin\n");
-				ret = -EINVAL;
-				goto out;
-			}
-			ret = xocl_kds_update_legacy(xdev, XDEV(xdev)->axlf_obj[slot_hdl]->kds_cfg,
-				       ip_layout, ps_kernel);
-			goto out;
-		}
-	} else {
-		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-			ret = xocl_vmgmt_ert_ctrl_is_version(xdev, 1, 0);
-		}
-		else {
-			ret = xocl_ert_ctrl_is_version(xdev, 1, 0);
-		}
-
->>>>>>> vmgmt changes on latest xrt
 		if (!ret) {
 			if (slot_hdl) {
 				userpf_err(xdev, "legacy ERT only support one xclbin\n");
@@ -2829,6 +2785,47 @@ out:
 	return ret;
 }
 
+int xocl_kds_set_cu_read_range(struct xocl_dev *xdev, u32 cu_idx,
+			       u32 start, u32 size)
+{
+	return kds_set_cu_read_range(&XDEV(xdev)->kds, cu_idx, start, size);
+}
+/* The caller needs to make sure ip_layout and ps_kernel section is locked */
+int xocl_vmgmt_kds_register_cus(struct xocl_dev *xdev, int slot_hdl, xuid_t *uuid,
+			  struct ip_layout *ip_layout,
+			  struct ps_kernel_node *ps_kernel)
+{
+	int ret = 0;
+	XDEV(xdev)->kds.xgq_enable = false;
+	ret = xocl_vmgmt_ert_ctrl_connect(xdev);
+	if (ret == -ENODEV) {
+		userpf_info(xdev, "ERT will be disabled, ret %d\n", ret);
+		XDEV(xdev)->kds.ert_disable = true;
+	} else if (ret < 0) {
+		userpf_info(xdev, "ERT connect failed, ret %d\n", ret);
+		ret = -EINVAL;
+		goto out;
+	}
+	/* Try config legacy ERT firmware */
+	if (!xocl_vmgmt_ert_ctrl_is_version(xdev, 1, 0)) {
+		if (slot_hdl) {
+			userpf_err(xdev, "legacy ERT only support one xclbin\n");
+			ret = -EINVAL;
+			goto out;
+		}
+		ret = xocl_kds_update_legacy(xdev, XDEV(xdev)->axlf_obj[slot_hdl]->kds_cfg,
+						ip_layout, ps_kernel);
+		goto out;
+	}
+	ret = xocl_kds_update_xgq(xdev, slot_hdl, uuid,
+			XDEV(xdev)->axlf_obj[slot_hdl]->kds_cfg, ip_layout, ps_kernel);
+out:
+	if (ret)
+		XDEV(xdev)->kds.bad_state = 1;
+	return ret;
+}
+
+#if 0
 int xocl_vmgmt_kds_unregister_cus(struct xocl_dev *xdev, int slot_hdl)
 {
 	int ret = 0;
@@ -2937,6 +2934,7 @@ out:
 		kds_reset(&XDEV(xdev)->kds);
 
 	return ret;
-}
+} 
+#endif
 
 
