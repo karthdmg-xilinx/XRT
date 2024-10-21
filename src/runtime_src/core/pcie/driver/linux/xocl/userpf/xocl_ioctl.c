@@ -102,6 +102,7 @@ int xocl_ctx_ioctl(struct drm_device *dev, void *data,
 	return ret;
 }
 
+
 /*
  * Create a hw context on a Slot. First Load the given xclbin to a slot and take
  * a lock on xclbin if it has not been acquired before. Also return the hw_context

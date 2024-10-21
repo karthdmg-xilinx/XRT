@@ -1757,6 +1757,13 @@ int xocl_usage_stat_ioctl(struct drm_device *dev, void *data,
 			args->h2c[i] = xocl_get_chan_stat(xdev, i, 1);
 			args->c2h[i] = xocl_get_chan_stat(xdev, i, 0);
 		}
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			args->h2c[i] = xocl_vmgmt_get_chan_stat(xdev, i, 1);
+			args->c2h[i] = xocl_vmgmt_get_chan_stat(xdev, i, 0);
+		} else {
+			args->h2c[i] = xocl_get_chan_stat(xdev, i, 1);
+			args->c2h[i] = xocl_get_chan_stat(xdev, i, 0);
+		}
 	}
 
 	return 0;
