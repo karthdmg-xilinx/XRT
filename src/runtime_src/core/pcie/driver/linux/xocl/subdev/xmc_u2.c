@@ -2512,7 +2512,6 @@ static ssize_t read_temp_by_mem_topology(struct file *filp,
 
 	memcpy(buffer, temp, nread);
 done:
-	XOCL_PUT_MEM_TOPOLOGY(xdev, slot_id);
 	vfree(temp);
 	/* xocl_icap_unlock_bitstream */
 	return nread;
