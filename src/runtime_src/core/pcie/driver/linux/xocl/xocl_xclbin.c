@@ -12,6 +12,7 @@
 
 #include "xrt_xclbin.h"
 #include "xocl_drv.h"
+#include "xocl_vmgmt_drv.h"
 
 struct xocl_xclbin_ops {
 	int (*xclbin_pre_download)(xdev_handle_t xdev, void *args);
@@ -259,7 +260,18 @@ int xocl_xclbin_download(xdev_handle_t xdev, const void *xclbin, uint32_t slot_i
 		 * TODO:
 		 * return xocl_xclbin_download_impl(xdev, xclbin, &icap_ops);
 		 */
-		rval = xocl_icap_download_axlf(xdev, xclbin, slot_id);
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			rval = xocl_vmgmt_icap_download_axlf(xdev, xclbin, slot_id);
+			if (rval) {
+				xocl_vmgmt_icap_clean_bitstream(xdev, slot_id);
+			}
+		}
+		else {
+			rval = xocl_icap_download_axlf(xdev, xclbin, slot_id);
+			if (rval) {
+				xocl_icap_clean_bitstream(xdev, slot_id);
+			}
+		}
 		if (!rval && XOCL_DSA_IS_MPSOC(xdev))
 			rval = xocl_xclbin_download_impl(xdev, xclbin, slot_id,
 					&mpsoc_ops);

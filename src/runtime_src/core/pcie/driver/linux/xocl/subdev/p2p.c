@@ -18,6 +18,7 @@
  * to maintain our driver compabile w/ all kernels we support here.
  */
 #include "../xocl_drv.h"
+#include "../xocl_vmgmt_drv.h"
 #include "../xocl_drm.h"
 #include <linux/iommu.h>
 
@@ -525,8 +526,14 @@ static void p2p_read_addr_mgmtpf(struct p2p *p2p)
 		XCL_MAILBOX_REQ_READ_P2P_BAR_ADDR,
 		mb_p2p->p2p_bar_len, mb_p2p->p2p_bar_addr);
 
-	ret = xocl_peer_request(xdev, mb_req, reqlen, &ret,
-		&resplen, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		ret = xocl_vmgmt_peer_request(xdev, mb_req, reqlen, &ret,
+			&resplen, NULL, NULL, 0, 0);
+	} else {
+		ret = xocl_peer_request(xdev, mb_req, reqlen, &ret,
+			&resplen, NULL, NULL, 0, 0);
+	}
+
 	vfree(mb_req);
 	if (ret) {
 		p2p_err(p2p, "dropped request (%d), failed with err: %d",
@@ -1568,8 +1575,13 @@ static int p2p_probe(struct platform_device *pdev)
 	} else if (bar_sz > 0)
 		p2p->p2p_max_mem_sz = bar_sz;
 	else {
-		p2p->p2p_max_mem_sz = xocl_get_ddr_channel_size(xdev) *
-		       	xocl_get_ddr_channel_count(xdev); /* GB */
+		if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+			p2p->p2p_max_mem_sz = xocl_vmgmt_get_ddr_channel_size(xdev) *
+					xocl_vmgmt_get_ddr_channel_count(xdev); /* GB */
+		} else {
+			p2p->p2p_max_mem_sz = xocl_get_ddr_channel_size(xdev) *
+					xocl_get_ddr_channel_count(xdev); /* GB */
+		}
 		p2p->p2p_max_mem_sz <<= 30;
 	}
 
