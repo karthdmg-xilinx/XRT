@@ -85,6 +85,8 @@ enum xcl_mailbox_request {
 	XCL_MAILBOX_REQ_SDR_DATA =		16,
 	XCL_MAILBOX_REQ_LOAD_XCLBIN_SLOT_KADDR = 17,
 	XCL_MAILBOX_REQ_LOAD_SLOT_XCLBIN =	18,
+	XCL_MAILBOX_REQ_PROTOCOL_VERSION =	19,
+	XCL_MAILBOX_REQ_LOAD_XCLBIN_UUID =	20,
 	XCL_MAILBOX_REQ_MAX,
 	/* Version 0 OP code ends */
 };
@@ -379,6 +381,14 @@ struct xcl_mailbox_bitstream_slot_xclbin {
 struct xcl_mailbox_clock_freqscaling {
 	uint32_t region;
 	uint16_t target_freqs[16];
+};
+
+struct xcl_mailbox_info {
+	uint32_t version;
+};
+
+struct xcl_mailbox_uuid {
+	uint8_t uuid[XCL_UUID_SZ];
 };
 
 #define XCL_MB_REQ_FLAG_RESPONSE	(1 << 0)

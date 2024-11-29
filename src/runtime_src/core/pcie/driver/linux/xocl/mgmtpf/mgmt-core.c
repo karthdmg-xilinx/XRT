@@ -998,6 +998,7 @@ void xclmgmt_mailbox_srv(void *arg, void *data, size_t len,
 			break;
 		}
 
+
 		if (payload_len < sizeof(*mb_kaddr)) {
 			mgmt_err(lro, "peer request dropped, wrong size\n");
 			break;
@@ -1027,6 +1028,8 @@ void xclmgmt_mailbox_srv(void *arg, void *data, size_t len,
 		uint64_t xclbin_len = 0;
 		struct axlf *xclbin = (struct axlf *)req->data;
 		bool fetch = (atomic_read(&lro->config_xclbin_change) == 1);
+
+                printk("DZ_ fetch %d\n", fetch);
 
 		if (payload_len < sizeof(*xclbin)) {
 			mgmt_err(lro, "peer request dropped, wrong size\n");
