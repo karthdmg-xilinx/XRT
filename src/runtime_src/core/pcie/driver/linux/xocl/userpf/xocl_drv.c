@@ -181,7 +181,7 @@ int xocl_unregister_cus(xdev_handle_t xdev_hdl, int slot_hdl)
 {
 	struct xocl_dev *xdev = container_of(XDEV(xdev_hdl), struct xocl_dev, core);
 	int ret = 0;
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev_hdl)) {
 		ret = xocl_vmgmt_kds_unregister_cus(xdev, slot_hdl);
 	}
 	else
@@ -2393,13 +2393,11 @@ int xocl_userpf_probe(struct pci_dev *pdev,
 	/* Waiting for all subdev to be initialized before returning. */
 	flush_delayed_work(&xdev->core.works[XOCL_WORK_REFRESH_SUBDEV].work);
 
-	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
-		/* Create timer to poll for vmgmt to come online */
-		xdev->core.vmgmt_subdev.is_vmgmt_mbx_version_valid = false;
-		timer_setup(&xdev->core.vmgmt_subdev.vmgmt_status_timer, xocl_mgmt_status_timer, 0);
-		mod_timer(&xdev->core.vmgmt_subdev.vmgmt_status_timer, jiffies + (HZ/10));
-		INIT_WORK(&xdev->core.vmgmt_subdev.vmgmt_status_poll, xocl_poll_mgmt_status);
-	}
+	/* Create timer to poll for vmgmt to come online */
+	xdev->core.vmgmt_subdev.is_vmgmt_mbx_version_valid = false;
+	timer_setup(&xdev->core.vmgmt_subdev.vmgmt_status_timer, xocl_mgmt_status_timer, 0);
+	mod_timer(&xdev->core.vmgmt_subdev.vmgmt_status_timer, jiffies + (HZ/10));
+	INIT_WORK(&xdev->core.vmgmt_subdev.vmgmt_status_poll, xocl_poll_mgmt_status);
 
 	xdev->mig_cache_expire_secs = XDEV_DEFAULT_EXPIRE_SECS;
 
