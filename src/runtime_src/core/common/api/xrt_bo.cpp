@@ -263,7 +263,7 @@ public:
   }
 
   // Managed imported handle
-  bo_impl(device_type dev, xrt_core::shared_handle::export_handle ehdl)
+  bo_impl(const device_type& dev, xrt_core::shared_handle::export_handle ehdl)
     : bo_impl(dev, pid_type{0}, ehdl)
   {}
 
@@ -324,6 +324,15 @@ public:
     return device.get_hwctx_handle();
   }
 
+  void*
+  get_hbuf_or_error() const
+  {
+    if (auto hbuf = get_hbuf())
+      return hbuf;
+
+    throw xrt_core::error("buffer is not mapped");
+  }
+
   export_handle
   export_buffer() const
   {
@@ -338,7 +347,7 @@ public:
   {
     if (sz + seek > size)
       throw xrt_core::error(-EINVAL,"attempting to write past buffer size");
-    auto hbuf = static_cast<char*>(get_hbuf()) + seek;
+    auto hbuf = static_cast<char*>(get_hbuf_or_error()) + seek;
     std::memcpy(hbuf, src, sz);
   }
 
@@ -347,7 +356,7 @@ public:
   {
     if (sz + skip > size)
       throw xrt_core::error(-EINVAL,"attempting to read past buffer size");
-    auto hbuf = static_cast<char*>(get_hbuf()) + skip;
+    auto hbuf = static_cast<char*>(get_hbuf_or_error()) + skip;
     std::memcpy(dst, hbuf, sz);
   }
 
@@ -1454,7 +1463,7 @@ bo::
 size() const
 {
   return xdp::native::profiling_wrapper("xrt::bo::size", [this]{
-    return handle->get_size();
+    return handle ? handle->get_size() : 0;
   }) ;
 }
 
