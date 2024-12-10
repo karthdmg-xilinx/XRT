@@ -21,6 +21,7 @@
 #include <linux/hwmon-sysfs.h>
 #include <linux/rtc.h>
 #include "../xocl_drv.h"
+#include "../xocl_vmgmt_drv.h"
 
 /* Firewall registers */
 #define	FAULT_STATUS				0x0
@@ -195,8 +196,14 @@ static void request_firewall_status(struct platform_device *pdev)
 	 * Request the firewall status information from the mgmt driver
 	 * Place the response into the firewall status struct
 	 */
-	(void) xocl_peer_request(xdev,
-		mb_req, reqlen, &fw->status, &resp_len, NULL, NULL, 0, 0);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		(void) xocl_vmgmt_peer_request(xdev,
+			mb_req, reqlen, &fw->status, &resp_len, NULL, NULL, 0, 0);
+	} else {
+		(void) xocl_peer_request(xdev,
+			mb_req, reqlen, &fw->status, &resp_len, NULL, NULL, 0, 0);
+	}
+
 	/* Overwrite mgmt timestamp. Some firmware does not provide a valid time */
 	XOCL_GETTIME(&time);
 	fw->status.err_detected_time = (u64)time.tv_sec;

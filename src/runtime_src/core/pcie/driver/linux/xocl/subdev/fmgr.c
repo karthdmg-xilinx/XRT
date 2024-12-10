@@ -122,7 +122,12 @@ static int xocl_pr_write_complete(struct fpga_manager *mgr,
 		return -EINVAL;
 	}
 	/* Send the xclbin blob to actual download framework in icap */
-	result = xocl_icap_download_axlf(obj->xdev, obj->blob, false);
+	if (XOCL_VMGMT_MBX_PROTOCOL_VERSION(xdev)) {
+		result = xocl_vmgmt_icap_download_axlf(obj->xdev, obj->blob, false);
+	}
+	else {
+		result = xocl_icap_download_axlf(obj->xdev, obj->blob, false);
+	}
 	obj->state = result ? FPGA_MGR_STATE_WRITE_COMPLETE_ERR : FPGA_MGR_STATE_WRITE_COMPLETE;
 	xocl_info(&mgr->dev, "Finish download of xclbin %pUb of size %zu B", &obj->blob->m_header.uuid, obj->count);
 	vfree(obj->blob);

@@ -597,6 +597,19 @@ struct xocl_axlf_obj_cache {
 };
 
 #define SERIAL_NUM_LEN	32
+
+typedef struct _xocl_vmgmt_subdev {
+    struct timer_list	vmgmt_status_timer;
+	struct work_struct	vmgmt_status_poll;
+	u32					vmgmt_mbx_protocol_version;
+	bool				is_vmgmt_mbx_version_valid;
+	struct platform_device	*vmgmt_dma_platdev;
+	struct platform_device	*vmgmt_ert_ctrl_platdev;
+	struct platform_device	*vmgmt_mbx_platdev;
+	struct platform_device	*vmgmt_icap_platdev;
+	struct platform_device	*vmgmt_rom_platdev;
+}xocl_vmgmt_subdev;
+
 struct xocl_dev_core {
 	struct pci_dev		*pdev;
 	int			dev_minor;
@@ -659,6 +672,7 @@ struct xocl_dev_core {
 
 	/* XOCL Should cache some of the information shared in IOCTL */
 	struct xocl_axlf_obj_cache *axlf_obj[MAX_SLOT_SUPPORT];
+	xocl_vmgmt_subdev vmgmt_subdev;
 };
 
 #define XOCL_DRM(xdev_hdl)					\
@@ -1571,7 +1585,7 @@ static inline int xocl_get_pl_slot(xdev_handle_t xdev_hdl, uint32_t *slot_id)
 	uuid_t *xclbin_id = NULL;
 	int ret = 0;
 
-	/* Check if DEFAULT_PL_PS_SLOT has a xclbin loaded */
+	/* Check if DEFAULT_PL_SLOT has a xclbin loaded */
 	ret = XOCL_GET_XCLBIN_ID(xdev_hdl, xclbin_id, DEFAULT_PL_PS_SLOT);
 	if (ret)
 		return ret;
@@ -1588,7 +1602,9 @@ static inline void xocl_icap_clean_bitstream_all(xdev_handle_t xdev_hdl)
 
 	/* Free all the bitstream */
         for (slot_id = 0; slot_id < MAX_SLOT_SUPPORT; slot_id++)
-                xocl_icap_clean_bitstream(xdev_hdl, slot_id);
+		{
+            xocl_icap_clean_bitstream(xdev_hdl, slot_id);
+		}
 }
 
 static inline u32 xocl_ddr_count_unified(xdev_handle_t xdev_hdl,
